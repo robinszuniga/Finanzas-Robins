@@ -327,11 +327,33 @@ const MY_USER_ID = 'cedf7f2a-23de-4319-89ff-5120f216c352'
 const DEUDA_INICIAL = 46495196
 
 const { createClient } = supabase
-const db = createClient(SUPABASE_URL, SUPABASE_KEY)
+const db = createClient(SUPABASE_URL, SUPABASE_KEY, {
+  db: { schema: 'public' },
+  auth: { persistSession: false, autoRefreshToken: false }
+})
 const currentUser = { id: MY_USER_ID }
 let chartInstances = {}
 let movFiltro = 'Todos'
 const MESES = ['MAR','ABR','MAY','JUN','JUL','AGO','SEP','OCT','NOV','DIC']
+
+// Helper: INSERT directo via REST para evitar schema cache del SDK
+async function directInsert(table, payload) {
+  const res = await fetch(SUPABASE_URL+'/rest/v1/'+table, {
+    method:'POST',
+    headers:{
+      'Content-Type':'application/json',
+      'apikey':SUPABASE_KEY,
+      'Authorization':'Bearer '+SUPABASE_KEY,
+      'Prefer':'return=minimal'
+    },
+    body: JSON.stringify(payload)
+  })
+  if(!res.ok) {
+    const txt = await res.text()
+    throw new Error(txt)
+  }
+  return true
+}
 
 const fmt = n => new Intl.NumberFormat('es-CO',{style:'currency',currency:'COP',minimumFractionDigits:0}).format(n)
 const fmtPct = n => (n*100).toFixed(1)+'%'
@@ -341,6 +363,7 @@ const inicioMes = () => { const d=new Date();d.setDate(1);return d.toISOString()
 const inicioAnio = () => new Date().getFullYear()+'-01-01'
 const getMes = f => new Date(f+'T12:00').toLocaleDateString('es-CO',{month:'short'}).toUpperCase().replace('.','').slice(0,3)
 const getSemana = f => { const d=new Date(f+'T12:00').getDate();return d<=7?'S1':d<=14?'S2':d<=21?'S3':'S4' }
+const enrichMovs = movs => (movs||[]).map(m=>({...m, semana: m.semana || getSemana(m.fecha)}))
 const mesActual = () => getMes(hoy())
 const nivel = p => p>=1?'NIVEL 6 — LIBRE':p>=.75?'NIVEL 5 — Casi libre':p>=.5?'NIVEL 4 — Imparable':p>=.25?'NIVEL 3 — Estratega':p>=.1?'NIVEL 2 — Guerrero':'NIVEL 1 — Sobreviviente'
 
@@ -363,11 +386,12 @@ function goTo(page) {
 async function loadDashboard() {
   document.getElementById('dash-date').textContent =
     new Date().toLocaleDateString('es-CO',{weekday:'long',day:'numeric',month:'long'})
-  const [{data:deudas},{data:movs},{data:prests}] = await Promise.all([
+  let [{data:deudas},{data:movs},{data:prests}] = await Promise.all([
     db.from('deudas').select('*').eq('user_id',currentUser.id).eq('activa',true).order('orden'),
     db.from('movimientos').select('*').eq('user_id',currentUser.id).gte('fecha',inicioMes()),
     db.from('prestamos').select('*').eq('user_id',currentUser.id).eq('estado','Activo')
   ])
+  movs = enrichMovs(movs)
   const pxd = n=>(movs||[]).filter(m=>m.tipo==='Pago deuda'&&m.a_cual_deuda===n).reduce((s,m)=>s+Number(m.monto),0)
   const deudaTotal=(deudas||[]).reduce((s,d)=>s+Math.max(Number(d.saldo_extracto)-pxd(d.nombre),0),0)
   const pct=deudaTotal>0?1-(deudaTotal/DEUDA_INICIAL):1
@@ -491,7 +515,8 @@ async function loadDashboard() {
 // ── MOVIMIENTOS ────────────────────────────────────────────
 async function loadMovimientos() {
   document.getElementById('mov-mes').textContent=new Date().toLocaleDateString('es-CO',{month:'long',year:'numeric'})
-  const {data:movs}=await db.from('movimientos').select('*').eq('user_id',currentUser.id).gte('fecha',inicioMes()).order('fecha',{ascending:false})
+  let {data:movs}=await db.from('movimientos').select('*').eq('user_id',currentUser.id).gte('fecha',inicioMes()).order('fecha',{ascending:false})
+  movs = enrichMovs(movs)
   const total=t=>(movs||[]).filter(m=>m.tipo===t).reduce((s,m)=>s+Number(m.monto),0)
   const filtrados=movFiltro==='Todos'?(movs||[]):(movs||[]).filter(m=>m.tipo===movFiltro)
   const semA=getSemana(hoy())
@@ -551,14 +576,10 @@ async function saveMov(){
   if(!monto||monto<=0){btn.disabled=false;btn.textContent='Guardar movimiento';return alert('Ingresa un monto válido')}
   if(tipo==='Pago deuda'&&!deuda){btn.disabled=false;btn.textContent='Guardar movimiento';return alert('Selecciona a cuál deuda va el pago')}
 
-  const payload={user_id:currentUser.id,fecha,tipo,categoria,monto,cuenta,a_cual_deuda:deuda,notas,semana:getSemana(fecha)}
-  console.log('Insertando movimiento:',JSON.stringify(payload))
   try{
-    const {data,error}=await db.from('movimientos').insert(payload).select()
-    if(error){console.error('Supabase error:',JSON.stringify(error));alert('Error al guardar: '+(error.message||error.details||error.hint||JSON.stringify(error)));btn.disabled=false;btn.textContent='Guardar movimiento';return}
-    console.log('Movimiento guardado:',data)
+    await directInsert('movimientos',{user_id:currentUser.id,fecha,tipo,categoria,monto,cuenta,a_cual_deuda:deuda,notas,semana:getSemana(fecha)})
     closeMovModal();loadMovimientos()
-  }catch(e){console.error('Error:',e);alert('Error de conexión: '+e.message)}
+  }catch(e){alert('Error al guardar: '+e.message)}
   btn.disabled=false;btn.textContent='Guardar movimiento'
 }
 
@@ -870,7 +891,7 @@ async function exportExcel(){
   ])
   const wb=XLSX.utils.book_new()
   // Movimientos
-  const r1=[['Fecha','Tipo','Categoría','Monto','Cuenta','A cuál deuda','Semana','Notas']];(movs||[]).forEach(m=>r1.push([m.fecha,m.tipo,m.categoria,Number(m.monto),m.cuenta,m.a_cual_deuda||'',m.semana||'',m.notas||'']));const ws1=XLSX.utils.aoa_to_sheet(r1);ws1['!cols']=[{wch:12},{wch:14},{wch:16},{wch:14},{wch:14},{wch:18},{wch:8},{wch:24}];XLSX.utils.book_append_sheet(wb,ws1,'Movimientos')
+  const r1=[['Fecha','Tipo','Categoría','Monto','Cuenta','A cuál deuda','Semana','Notas']];(movs||[]).forEach(m=>r1.push([m.fecha,m.tipo,m.categoria,Number(m.monto),m.cuenta,m.a_cual_deuda||'',m.semana||getSemana(m.fecha)||'',m.notas||'']));const ws1=XLSX.utils.aoa_to_sheet(r1);ws1['!cols']=[{wch:12},{wch:14},{wch:16},{wch:14},{wch:14},{wch:18},{wch:8},{wch:24}];XLSX.utils.book_append_sheet(wb,ws1,'Movimientos')
   // Deuda
   const r2=[['Nombre','Tipo','Saldo Extracto','Tasa EA','Interés/mes','Cuota','Cuotas pag.','Cuotas rest.']];(deudas||[]).forEach(d=>r2.push([d.nombre,d.tipo,Number(d.saldo_extracto),d.tasa_ea,Math.round(Number(d.saldo_extracto)*(Math.pow(1+d.tasa_ea,1/12)-1)),d.cuota_mensual||'',d.cuotas_pagadas||'',d.cuotas_total?(d.cuotas_total-(d.cuotas_pagadas||0)):'']));r2.push([]);r2.push(['TRACKER MENSUAL']);r2.push(['Deuda',...MESES]);const tM={};(tracker||[]).forEach(t=>tM[t.deuda_id+'_'+t.mes]=t.saldo);(deudas||[]).forEach(d=>r2.push([d.nombre,...MESES.map(m=>tM[d.id+'_'+m]||'')]));const ws2=XLSX.utils.aoa_to_sheet(r2);ws2['!cols']=[{wch:24},{wch:10},{wch:16},{wch:10},{wch:14},{wch:12},{wch:12},{wch:12}];XLSX.utils.book_append_sheet(wb,ws2,'Deuda')
   // Distribuidor
