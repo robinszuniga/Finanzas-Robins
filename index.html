@@ -577,7 +577,7 @@ async function saveMov(){
   if(tipo==='Pago deuda'&&!deuda){btn.disabled=false;btn.textContent='Guardar movimiento';return alert('Selecciona a cuál deuda va el pago')}
 
   try{
-    await directInsert('movimientos',{user_id:currentUser.id,fecha,tipo,categoria,monto,cuenta,a_cual_deuda:deuda,notas,semana:getSemana(fecha)})
+    await directInsert('movimientos',{user_id:currentUser.id,fecha,tipo,categoria,monto,cuenta,a_cual_deuda:deuda,notas})
     closeMovModal();loadMovimientos()
   }catch(e){alert('Error al guardar: '+e.message)}
   btn.disabled=false;btn.textContent='Guardar movimiento'
