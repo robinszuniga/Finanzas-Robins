@@ -336,23 +336,59 @@ let chartInstances = {}
 let movFiltro = 'Todos'
 const MESES = ['MAR','ABR','MAY','JUN','JUL','AGO','SEP','OCT','NOV','DIC']
 
-// Helper: INSERT directo via REST para evitar schema cache del SDK
-async function directInsert(table, payload) {
+// ═══ REST DIRECTO — bypass total del SDK para evitar schema cache ═══
+const REST_HEADERS = {
+  'Content-Type':'application/json',
+  'apikey':SUPABASE_KEY,
+  'Authorization':'Bearer '+SUPABASE_KEY
+}
+
+async function restInsert(table, payload) {
   const res = await fetch(SUPABASE_URL+'/rest/v1/'+table, {
     method:'POST',
-    headers:{
-      'Content-Type':'application/json',
-      'apikey':SUPABASE_KEY,
-      'Authorization':'Bearer '+SUPABASE_KEY,
-      'Prefer':'return=minimal'
-    },
+    headers:{...REST_HEADERS, 'Prefer':'return=minimal'},
     body: JSON.stringify(payload)
   })
-  if(!res.ok) {
-    const txt = await res.text()
-    throw new Error(txt)
-  }
+  if(!res.ok) throw new Error(await res.text())
   return true
+}
+
+async function restSelect(table, params='') {
+  const res = await fetch(SUPABASE_URL+'/rest/v1/'+table+'?'+params, {
+    headers:{...REST_HEADERS, 'Accept':'application/json'}
+  })
+  if(!res.ok) throw new Error(await res.text())
+  return await res.json()
+}
+
+async function restDelete(table, params='') {
+  const res = await fetch(SUPABASE_URL+'/rest/v1/'+table+'?'+params, {
+    method:'DELETE',
+    headers:{...REST_HEADERS, 'Prefer':'return=minimal'}
+  })
+  if(!res.ok) throw new Error(await res.text())
+  return true
+}
+
+// Columnas de movimientos SIN semana — para evitar PGRST204
+const MOV_COLUMNS = 'id,user_id,fecha,tipo,categoria,monto,cuenta,a_cual_deuda,notas,created_at'
+
+async function getMovimientos(filters={}) {
+  let params = 'select='+MOV_COLUMNS+'&user_id=eq.'+currentUser.id
+  if(filters.desde) params += '&fecha=gte.'+filters.desde
+  if(filters.tipo) params += '&tipo=eq.'+encodeURIComponent(filters.tipo)
+  if(filters.order) params += '&order='+filters.order
+  else params += '&order=fecha.desc'
+  const data = await restSelect('movimientos', params)
+  return enrichMovs(data)
+}
+
+async function insertMovimiento(payload) {
+  return restInsert('movimientos', payload)
+}
+
+async function deleteMovimiento(id) {
+  return restDelete('movimientos', 'id=eq.'+id)
 }
 
 const fmt = n => new Intl.NumberFormat('es-CO',{style:'currency',currency:'COP',minimumFractionDigits:0}).format(n)
@@ -386,12 +422,11 @@ function goTo(page) {
 async function loadDashboard() {
   document.getElementById('dash-date').textContent =
     new Date().toLocaleDateString('es-CO',{weekday:'long',day:'numeric',month:'long'})
-  let [{data:deudas},{data:movs},{data:prests}] = await Promise.all([
+  let [{data:deudas},movs,{data:prests}] = await Promise.all([
     db.from('deudas').select('*').eq('user_id',currentUser.id).eq('activa',true).order('orden'),
-    db.from('movimientos').select('*').eq('user_id',currentUser.id).gte('fecha',inicioMes()),
+    getMovimientos({desde:inicioMes()}),
     db.from('prestamos').select('*').eq('user_id',currentUser.id).eq('estado','Activo')
   ])
-  movs = enrichMovs(movs)
   const pxd = n=>(movs||[]).filter(m=>m.tipo==='Pago deuda'&&m.a_cual_deuda===n).reduce((s,m)=>s+Number(m.monto),0)
   const deudaTotal=(deudas||[]).reduce((s,d)=>s+Math.max(Number(d.saldo_extracto)-pxd(d.nombre),0),0)
   const pct=deudaTotal>0?1-(deudaTotal/DEUDA_INICIAL):1
@@ -515,8 +550,7 @@ async function loadDashboard() {
 // ── MOVIMIENTOS ────────────────────────────────────────────
 async function loadMovimientos() {
   document.getElementById('mov-mes').textContent=new Date().toLocaleDateString('es-CO',{month:'long',year:'numeric'})
-  let {data:movs}=await db.from('movimientos').select('*').eq('user_id',currentUser.id).gte('fecha',inicioMes()).order('fecha',{ascending:false})
-  movs = enrichMovs(movs)
+  let movs=await getMovimientos({desde:inicioMes()})
   const total=t=>(movs||[]).filter(m=>m.tipo===t).reduce((s,m)=>s+Number(m.monto),0)
   const filtrados=movFiltro==='Todos'?(movs||[]):(movs||[]).filter(m=>m.tipo===movFiltro)
   const semA=getSemana(hoy())
@@ -557,7 +591,7 @@ async function loadMovimientos() {
   `
 }
 function setMovFiltro(f){movFiltro=f;loadMovimientos()}
-async function deleteMov(id){if(!confirm('Eliminar?'))return;await db.from('movimientos').delete().eq('id',id);loadMovimientos()}
+async function deleteMov(id){if(!confirm('Eliminar?'))return;await deleteMovimiento(id);loadMovimientos()}
 function openMovModal(){document.getElementById('mov-fecha').value=hoy();document.getElementById('mov-monto').value='';document.getElementById('mov-tipo').value='Gasto';document.getElementById('mov-cat').value='Otro';document.getElementById('mov-cuenta').value='Bancolombia';document.getElementById('mov-notas').value='';document.getElementById('mov-deuda-group').style.display='none';document.getElementById('mov-modal').classList.add('open')}
 function closeMovModal(){document.getElementById('mov-modal').classList.remove('open')}
 function onTipoChange(){document.getElementById('mov-deuda-group').style.display=document.getElementById('mov-tipo').value==='Pago deuda'?'block':'none'}
@@ -577,7 +611,7 @@ async function saveMov(){
   if(tipo==='Pago deuda'&&!deuda){btn.disabled=false;btn.textContent='Guardar movimiento';return alert('Selecciona a cuál deuda va el pago')}
 
   try{
-    await directInsert('movimientos',{user_id:currentUser.id,fecha,tipo,categoria,monto,cuenta,a_cual_deuda:deuda,notas})
+    await insertMovimiento({user_id:currentUser.id,fecha,tipo,categoria,monto,cuenta,a_cual_deuda:deuda,notas})
     closeMovModal();loadMovimientos()
   }catch(e){alert('Error al guardar: '+e.message)}
   btn.disabled=false;btn.textContent='Guardar movimiento'
@@ -585,9 +619,9 @@ async function saveMov(){
 
 // ── DEUDA ──────────────────────────────────────────────────
 async function loadDeuda(){
-  const [{data:deudas},{data:movs},{data:tracker}]=await Promise.all([
+  const [{data:deudas},movs,{data:tracker}]=await Promise.all([
     db.from('deudas').select('*').eq('user_id',currentUser.id).eq('activa',true).order('orden'),
-    db.from('movimientos').select('*').eq('user_id',currentUser.id).eq('tipo','Pago deuda').gte('fecha',inicioMes()),
+    getMovimientos({desde:inicioMes(),tipo:'Pago deuda'}),
     db.from('saldo_tracker').select('*').eq('user_id',currentUser.id)
   ])
   const pxd=n=>(movs||[]).filter(m=>m.a_cual_deuda===n).reduce((s,m)=>s+Number(m.monto),0)
@@ -735,10 +769,10 @@ async function saveDeudaSaldo(){
 const DIST_DEF=[{concepto:'1. Cuota crédito Davivienda',valor:1028000},{concepto:'2. Salud y pensión',valor:508000},{concepto:'3. Mercado',valor:null},{concepto:'4. Gasolina',valor:null},{concepto:'5. Luz',valor:null},{concepto:'6. Agua',valor:null},{concepto:'7. Gas',valor:28220},{concepto:'8. Mamá / familia',valor:null},{concepto:'9. Celular / internet',valor:null},{concepto:'10. CapCut',valor:null},{concepto:'11. Ahorro pareja',valor:250000},{concepto:'12. Mesada personal',valor:500000},{concepto:'13. Viaje España',valor:500000},{concepto:'14. Lavada carro',valor:null},{concepto:'15. Peluquería',valor:null},{concepto:'Cuota préstamo familiar',valor:0},{concepto:'Pago extra deuda (Nu)',valor:null}]
 let dSt={salario:0,extras:0,g66:0,items:DIST_DEF.map(i=>({...i,marcado:false})),usarCuentas:false,totalCuentas:0}
 async function loadDistribuidor(){
-  const [{data:d},{data:its},{data:movs},{data:saldosDB}]=await Promise.all([
+  const [{data:d},{data:its},movs,{data:saldosDB}]=await Promise.all([
     db.from('distribuidor').select('*').eq('user_id',currentUser.id).single(),
     db.from('distribuidor_items').select('*').eq('user_id',currentUser.id).order('orden'),
-    db.from('movimientos').select('*').eq('user_id',currentUser.id),
+    getMovimientos({}),
     db.from('saldos_cuentas').select('*').eq('user_id',currentUser.id)
   ])
   if(d){dSt.salario=d.salario;dSt.extras=d.extras||0;dSt.g66=d.global66_pesos||0}
@@ -801,7 +835,7 @@ async function saveDist(){const btn=document.querySelector('#page-distribuidor .
 let gFijos=[{concepto:'Mercado',valor:0},{concepto:'Gasolina',valor:0},{concepto:'Luz',valor:280680},{concepto:'Agua',valor:0},{concepto:'Gas',valor:0},{concepto:'Salud y pensión',valor:508000},{concepto:'Mamá / familia',valor:0},{concepto:'Internet / celular',valor:48000},{concepto:'CapCut',valor:0},{concepto:'Lavada carro',valor:0},{concepto:'Peluquería',valor:0}]
 let compros=[{concepto:'Viaje Medellín',mes:'MAR',valor:2500000},{concepto:'Cumpleaños papá',mes:'MAR',valor:400000},{concepto:'Viaje España',mes:'JUL',valor:500000},{concepto:'Otro',mes:null,valor:0}]
 async function loadMensual(){
-  const [{data:movs},{data:fij}]=await Promise.all([db.from('movimientos').select('*').eq('user_id',currentUser.id).gte('fecha',inicioAnio()),db.from('gastos_fijos').select('*').eq('user_id',currentUser.id).order('orden')])
+  const [movs,{data:fij}]=await Promise.all([getMovimientos({desde:inicioAnio()}),db.from('gastos_fijos').select('*').eq('user_id',currentUser.id).order('orden')])
   if(fij&&fij.length>0)gFijos=fij
   const gM=(t,m)=>(movs||[]).filter(x=>x.tipo===t&&getMes(x.fecha)===m).reduce((s,x)=>s+Number(x.monto),0)
   const tG=m=>(movs||[]).filter(x=>x.tipo==='Gasto'&&getMes(x.fecha)===m).reduce((s,x)=>s+Number(x.monto),0)
@@ -832,7 +866,7 @@ async function saveComp(idx,v,m){compros[idx]={...compros[idx],valor:Number(v)||
 // ── ANÁLISIS ───────────────────────────────────────────────
 async function loadAnalisis(){
   document.getElementById('analisis-year').textContent='Año '+new Date().getFullYear()
-  const [{data:movs},{data:tracker},{data:deudas}]=await Promise.all([db.from('movimientos').select('*').eq('user_id',currentUser.id).gte('fecha',inicioAnio()),db.from('saldo_tracker').select('*,deudas(nombre)').eq('user_id',currentUser.id).order('anio').order('mes'),db.from('deudas').select('*').eq('user_id',currentUser.id).eq('activa',true).order('orden')])
+  const [movs,{data:tracker},{data:deudas}]=await Promise.all([getMovimientos({desde:inicioAnio()}),db.from('saldo_tracker').select('*,deudas(nombre)').eq('user_id',currentUser.id).order('anio').order('mes'),db.from('deudas').select('*').eq('user_id',currentUser.id).eq('activa',true).order('orden')])
   const tG=(movs||[]).filter(m=>m.tipo==='Gasto').reduce((s,m)=>s+Number(m.monto),0)
   const tI=(movs||[]).filter(m=>m.tipo==='Ingreso').reduce((s,m)=>s+Number(m.monto),0)
   const tP=(movs||[]).filter(m=>m.tipo==='Pago deuda').reduce((s,m)=>s+Number(m.monto),0)
@@ -879,8 +913,8 @@ async function markPagado(id){if(!confirm('Marcar como pagado completamente?'))r
 // ── EXPORTAR EXCEL ─────────────────────────────────────────
 async function exportExcel(){
   const btn=document.querySelector('[onclick="exportExcel()"]');btn.textContent='Exportando...'
-  const [{data:movs},{data:deudas},{data:tracker},{data:dist},{data:ditms},{data:prests},{data:g66d},{data:g66h}]=await Promise.all([
-    db.from('movimientos').select('*').eq('user_id',currentUser.id).order('fecha',{ascending:false}),
+  const [movs,{data:deudas},{data:tracker},{data:dist},{data:ditms},{data:prests},{data:g66d},{data:g66h}]=await Promise.all([
+    getMovimientos({}),
     db.from('deudas').select('*').eq('user_id',currentUser.id).eq('activa',true).order('orden'),
     db.from('saldo_tracker').select('*,deudas(nombre)').eq('user_id',currentUser.id),
     db.from('distribuidor').select('*').eq('user_id',currentUser.id).single(),
@@ -920,8 +954,8 @@ const CUENTAS_CONFIG = [
 ]
 
 async function loadCuentas() {
-  const [{ data:movs },{ data:saldosDB }] = await Promise.all([
-    db.from('movimientos').select('*').eq('user_id',currentUser.id),
+  const [movs,{ data:saldosDB }] = await Promise.all([
+    getMovimientos({}),
     db.from('saldos_cuentas').select('*').eq('user_id',currentUser.id)
   ])
 
