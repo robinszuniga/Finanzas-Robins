@@ -237,7 +237,7 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);min-h
 <div id="deuda-modal" class="modal-overlay"><div class="modal">
   <div class="modal-header"><p class="modal-title" id="deuda-modal-title">Actualizar saldo</p><button class="modal-close" onclick="closeDeudaModal()">✕</button></div>
   <p style="font-size:12px;color:var(--muted);margin-bottom:14px">Ingresa el saldo del extracto más reciente.</p>
-  <div class="form-group"><label class="form-label">Saldo según extracto</label><input class="form-input" type="number" id="deuda-saldo-input"/></div>
+  <div class="form-group"><label class="form-label">Saldo según extracto</label><input class="form-input" type="text" inputmode="numeric" id="deuda-saldo-input" placeholder="0" onfocus="this.value=this.value.replace(/\./g,'')" onblur="if(this.value)this.value=new Intl.NumberFormat('es-CO').format(Number(this.value.replace(/\./g,'')))" oninput="this.value=this.value.replace(/[^0-9]/g,'')"/></div>
   <input type="hidden" id="deuda-edit-id"/>
   <button class="btn btn-primary" style="width:100%" onclick="saveDeudaSaldo()">Actualizar saldo</button>
 </div></div>
@@ -246,7 +246,7 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);min-h
   <div class="modal-header"><p class="modal-title">Nuevo préstamo</p><button class="modal-close" onclick="closePrestModal()">✕</button></div>
   <div class="form-grid-2">
     <div class="form-group"><label class="form-label">A quién</label><input class="form-input" type="text" id="prest-quien" placeholder="Nombre"/></div>
-    <div class="form-group"><label class="form-label">Monto</label><input class="form-input" type="number" id="prest-monto" placeholder="0"/></div>
+    <div class="form-group"><label class="form-label">Monto</label><input class="form-input" type="text" inputmode="numeric" id="prest-monto" placeholder="0" onfocus="this.value=this.value.replace(/\./g,'')" onblur="if(this.value)this.value=new Intl.NumberFormat('es-CO').format(Number(this.value.replace(/\./g,'')))" oninput="this.value=this.value.replace(/[^0-9]/g,'')"/></div>
   </div>
   <div class="form-grid-2">
     <div class="form-group"><label class="form-label">Fecha</label><input class="form-input" type="date" id="prest-fecha"/></div>
@@ -258,7 +258,7 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);min-h
 <!-- MODAL PAGO PRESTAMO -->
 <div id="prest-pago-modal" class="modal-overlay"><div class="modal">
   <div class="modal-header"><p class="modal-title" id="prest-pago-title">Registrar pago</p><button class="modal-close" onclick="document.getElementById('prest-pago-modal').classList.remove('open')">✕</button></div>
-  <div class="form-group"><label class="form-label">Cuánto te pagó</label><input class="form-input" type="number" id="prest-pago-monto" placeholder="0"/></div>
+  <div class="form-group"><label class="form-label">Cuánto te pagó</label><input class="form-input" type="text" inputmode="numeric" id="prest-pago-monto" placeholder="0" onfocus="this.value=this.value.replace(/\./g,'')" onblur="if(this.value)this.value=new Intl.NumberFormat('es-CO').format(Number(this.value.replace(/\./g,'')))" oninput="this.value=this.value.replace(/[^0-9]/g,'')"/></div>
   <input type="hidden" id="prest-pago-id"/><input type="hidden" id="prest-pago-actual"/>
   <button class="btn btn-success" style="width:100%" onclick="savePrestPago()">Registrar pago</button>
 </div></div>
@@ -267,11 +267,11 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);min-h
   <div class="modal-header"><p class="modal-title" id="new-deuda-modal-title">Nueva deuda</p><button class="modal-close" onclick="closeNewDeudaModal()">✕</button></div>
   <div class="form-group"><label class="form-label">Nombre de la deuda</label><input class="form-input" type="text" id="nd-nombre" placeholder="ej. Tarjeta Visa, Préstamo familiar"/></div>
   <div class="form-grid-2">
-    <div class="form-group"><label class="form-label">Saldo actual</label><input class="form-input" type="number" id="nd-saldo" placeholder="0"/></div>
+    <div class="form-group"><label class="form-label">Saldo actual</label><input class="form-input" type="text" inputmode="numeric" id="nd-saldo" placeholder="0" onfocus="this.value=this.value.replace(/\./g,'')" onblur="if(this.value)this.value=new Intl.NumberFormat('es-CO').format(Number(this.value.replace(/\./g,'')))" oninput="this.value=this.value.replace(/[^0-9]/g,'')"/></div>
     <div class="form-group"><label class="form-label">Tasa E.A. (%)</label><input class="form-input" type="number" id="nd-tasa" placeholder="ej. 24.31" step="0.01"/></div>
   </div>
   <div class="form-grid-2">
-    <div class="form-group"><label class="form-label">Cuota mensual (si tiene)</label><input class="form-input" type="number" id="nd-cuota" placeholder="0"/></div>
+    <div class="form-group"><label class="form-label">Cuota mensual (si tiene)</label><input class="form-input" type="text" inputmode="numeric" id="nd-cuota" placeholder="0" onfocus="this.value=this.value.replace(/\./g,'')" onblur="if(this.value)this.value=new Intl.NumberFormat('es-CO').format(Number(this.value.replace(/\./g,'')))" oninput="this.value=this.value.replace(/[^0-9]/g,'')"/></div>
     <div class="form-group"><label class="form-label">Tipo</label>
       <select class="form-select" id="nd-tipo">
         <option>Tarjeta de crédito</option><option>Crédito libre inversión</option><option>Préstamo familiar</option><option>Otro</option>
@@ -335,6 +335,7 @@ const fmt = n => new Intl.NumberFormat('es-CO',{style:'currency',currency:'COP',
 const fmtPct = n => (n*100).toFixed(1)+'%'
 const fmtC = n => new Intl.NumberFormat('es-CO',{notation:'compact',maximumFractionDigits:1}).format(n)
 const fmtNum = n => new Intl.NumberFormat('es-CO').format(n)
+const parseNum = v => Number(String(v).replace(/\./g,'').replace(/,/g,'')) || 0
 const hoy = () => new Date().toISOString().slice(0,10)
 const inicioMes = () => { const d=new Date();d.setDate(1);return d.toISOString().slice(0,10) }
 const inicioAnio = () => new Date().getFullYear()+'-01-01'
@@ -552,7 +553,7 @@ async function saveMov(){
   const btn=document.getElementById('mov-save-btn');btn.disabled=true;btn.textContent='Guardando...'
   const tipo=document.getElementById('mov-tipo').value
   const fecha=document.getElementById('mov-fecha').value
-  const monto=Number(document.getElementById('mov-monto').value.replace(/\./g,''))
+  const monto=parseNum(document.getElementById('mov-monto').value)
   const categoria=document.getElementById('mov-cat').value
   const cuenta=document.getElementById('mov-cuenta').value
   const deuda=tipo==='Pago deuda'?document.getElementById('mov-deuda').value:null
@@ -597,14 +598,14 @@ async function loadDeuda(){
       <table style="width:100%;border-collapse:collapse;font-size:11px;min-width:580px">
         <thead><tr><th style="text-align:left;padding:5px 7px;background:var(--bg);color:var(--muted);font-weight:600;min-width:120px">Deuda</th>${MESES.map(m=>'<th style="text-align:center;padding:5px 3px;background:var(--bg);color:'+(m===mesActual()?'var(--violet)':'var(--muted)')+';font-weight:600">'+m+'</th>').join('')}</tr></thead>
         <tbody>
-          ${(deudas||[]).map(d=>'<tr><td style="padding:5px 7px;font-weight:500">'+d.nombre+'</td>'+MESES.map(m=>{const v=tMap[d.id+'_'+m];return '<td style="padding:3px;text-align:center"><input type="number" value="'+(v||'')+'" placeholder="—" style="width:65px;border:1px solid '+(m===mesActual()?'#BFDBFE':'var(--border)')+';border-radius:4px;padding:2px 4px;font-size:10px;text-align:right;background:'+(v?'var(--blue-l)':'var(--white)')+'" onchange="saveTracker(\''+d.id+'\',\''+m+'\',this.value)"/></td>'}).join('')+'</tr>').join('')}
+          ${(deudas||[]).map(d=>'<tr><td style="padding:5px 7px;font-weight:500">'+d.nombre+'</td>'+MESES.map(m=>{const v=tMap[d.id+'_'+m];return '<td style="padding:3px;text-align:center"><input type="text" inputmode="numeric" value="'+(v?new Intl.NumberFormat('es-CO').format(v):'')+'" placeholder="—" style="width:72px;border:1px solid '+(m===mesActual()?'#BFDBFE':'var(--border)')+';border-radius:4px;padding:2px 4px;font-size:10px;text-align:right;background:'+(v?'var(--blue-l)':'var(--white)')+'" onfocus="this.value=this.value.replace(/\\./g,\'\')" onblur="if(this.value)this.value=new Intl.NumberFormat(\'es-CO\').format(Number(this.value.replace(/\\./g,\'\')))" onchange="saveTracker(\''+d.id+'\',\''+m+'\',this.value.replace(/\\./g,\'\'))"/></td>'}).join('')+'</tr>').join('')}
           <tr style="border-top:2px solid var(--border)"><td style="padding:5px 7px;font-weight:700;color:var(--red)">TOTAL</td>${MESES.map(m=>{const t=(deudas||[]).reduce((s,d)=>s+(Number(tMap[d.id+'_'+m])||0),0);return '<td style="padding:5px 3px;text-align:center;font-weight:700;font-size:10px;color:var(--red)">'+(t>0?fmtC(t):'—')+'</td>'}).join('')}</tr>
         </tbody>
       </table>
     </div>
     <p class="section-label">Simulador — Préstamo Familiar</p>
     <div class="card"><div class="grid-2" style="margin-bottom:12px">
-      <div class="form-group" style="margin:0"><label class="form-label">Cuánto te prestan</label><input class="form-input" type="number" id="sim-monto" value="12000000" oninput="calcSim()"/></div>
+      <div class="form-group" style="margin:0"><label class="form-label">Cuánto te prestan</label><input class="form-input" type="text" inputmode="numeric" id="sim-monto" value="12.000.000" onfocus="this.value=this.value.replace(/\./g,'')" onblur="this.value=new Intl.NumberFormat('es-CO').format(Number(this.value.replace(/\./g,'')))" oninput="this.value=this.value.replace(/[^0-9]/g,'');calcSim()"/></div>
       <div class="form-group" style="margin:0"><label class="form-label">Interés (%)</label><input class="form-input" type="number" id="sim-tasa" value="10" oninput="calcSim()"/></div>
       <div class="form-group" style="margin:0"><label class="form-label">Meses para pagar</label><input class="form-input" type="number" id="sim-meses" value="4" oninput="calcSim()"/></div>
       <div></div>
@@ -613,8 +614,8 @@ async function loadDeuda(){
   calcSim()
 }
 async function saveTracker(dId,mes,v){const s=Number(v);if(!s){await db.from('saldo_tracker').delete().eq('user_id',currentUser.id).eq('deuda_id',dId).eq('mes',mes).eq('anio',2026);return}await db.from('saldo_tracker').upsert({user_id:currentUser.id,deuda_id:dId,mes,anio:2026,saldo:s},{onConflict:'user_id,deuda_id,mes,anio'})}
-function calcSim(){const m=Number(document.getElementById('sim-monto')?.value)||0,t=Number(document.getElementById('sim-tasa')?.value)||0,n=Number(document.getElementById('sim-meses')?.value)||0;if(!m||!n)return;const cuota=Math.round(m*(1+t/100)/n),tD=Math.round(m*(1+t/100)),iF=tD-m,iB=Math.round(m*(Math.pow(1.2431,n/12)-1)),ah=iB-iF;const el=document.getElementById('sim-result');if(!el)return;el.innerHTML='<div class="grid-2" style="gap:8px;margin-bottom:8px"><div style="background:var(--violet-l);border-radius:8px;padding:10px;text-align:center"><p class="kpi-label" style="color:var(--violet)">Cuota mensual</p><p style="font-weight:700;font-size:17px;color:var(--violet)">'+fmt(cuota)+'</p></div><div style="background:'+(ah>0?'var(--green-l)':'var(--red-l)')+';border-radius:8px;padding:10px;text-align:center"><p class="kpi-label" style="color:'+(ah>0?'var(--green)':'var(--red)')+'">vs banco '+(ah>0?'ahorras':'pagas de más')+'</p><p style="font-weight:700;font-size:17px;color:'+(ah>0?'var(--green)':'var(--red)')+'">'+fmt(Math.abs(ah))+'</p></div></div><p style="font-size:11px;color:var(--muted);text-align:center">Total: '+fmt(tD)+' · Interés familiar: '+fmt(iF)+'</p>'}
-function openDeudaModal(id,nom,s){document.getElementById('deuda-modal-title').textContent='Actualizar — '+nom;document.getElementById('deuda-edit-id').value=id;document.getElementById('deuda-saldo-input').value=s;document.getElementById('deuda-modal').classList.add('open')}
+function calcSim(){const m=parseNum(document.getElementById('sim-monto')?.value),t=Number(document.getElementById('sim-tasa')?.value)||0,n=Number(document.getElementById('sim-meses')?.value)||0;if(!m||!n)return;const cuota=Math.round(m*(1+t/100)/n),tD=Math.round(m*(1+t/100)),iF=tD-m,iB=Math.round(m*(Math.pow(1.2431,n/12)-1)),ah=iB-iF;const el=document.getElementById('sim-result');if(!el)return;el.innerHTML='<div class="grid-2" style="gap:8px;margin-bottom:8px"><div style="background:var(--violet-l);border-radius:8px;padding:10px;text-align:center"><p class="kpi-label" style="color:var(--violet)">Cuota mensual</p><p style="font-weight:700;font-size:17px;color:var(--violet)">'+fmt(cuota)+'</p></div><div style="background:'+(ah>0?'var(--green-l)':'var(--red-l)')+';border-radius:8px;padding:10px;text-align:center"><p class="kpi-label" style="color:'+(ah>0?'var(--green)':'var(--red)')+'">vs banco '+(ah>0?'ahorras':'pagas de más')+'</p><p style="font-weight:700;font-size:17px;color:'+(ah>0?'var(--green)':'var(--red)')+'">'+fmt(Math.abs(ah))+'</p></div></div><p style="font-size:11px;color:var(--muted);text-align:center">Total: '+fmt(tD)+' · Interés familiar: '+fmt(iF)+'</p>'}
+function openDeudaModal(id,nom,s){document.getElementById('deuda-modal-title').textContent='Actualizar — '+nom;document.getElementById('deuda-edit-id').value=id;document.getElementById('deuda-saldo-input').value=fmtNum(s);document.getElementById('deuda-modal').classList.add('open')}
 function closeDeudaModal(){document.getElementById('deuda-modal').classList.remove('open')}
 
 // ── NUEVA DEUDA (crear/editar/eliminar) ────────────────────
@@ -637,9 +638,9 @@ async function openEditDeuda(id){
   const {data:d}=await db.from('deudas').select('*').eq('id',id).single()
   if(!d)return
   document.getElementById('nd-nombre').value=d.nombre
-  document.getElementById('nd-saldo').value=d.saldo_extracto
+  document.getElementById('nd-saldo').value=d.saldo_extracto?fmtNum(d.saldo_extracto):''
   document.getElementById('nd-tasa').value=(d.tasa_ea*100).toFixed(2)
-  document.getElementById('nd-cuota').value=d.cuota_mensual||''
+  document.getElementById('nd-cuota').value=d.cuota_mensual?fmtNum(d.cuota_mensual):''
   document.getElementById('nd-tipo').value=d.tipo||'Otro'
   document.getElementById('nd-cpagadas').value=d.cuotas_pagadas||''
   document.getElementById('nd-ctotal').value=d.cuotas_total||''
@@ -651,9 +652,9 @@ async function openEditDeuda(id){
 
 async function saveNewDeuda(){
   const nombre=document.getElementById('nd-nombre').value.trim()
-  const saldo=Number(document.getElementById('nd-saldo').value)||0
+  const saldo=parseNum(document.getElementById('nd-saldo').value)
   const tasa=(Number(document.getElementById('nd-tasa').value)||0)/100
-  const cuota=Number(document.getElementById('nd-cuota').value)||null
+  const cuota=parseNum(document.getElementById('nd-cuota').value)||null
   const tipo=document.getElementById('nd-tipo').value
   const cpag=Number(document.getElementById('nd-cpagadas').value)||0
   const ctot=Number(document.getElementById('nd-ctotal').value)||null
@@ -705,7 +706,7 @@ async function updateDeudaDropdown(){
 }
 async function saveDeudaSaldo(){
   const id=document.getElementById('deuda-edit-id').value
-  const saldo=Number(document.getElementById('deuda-saldo-input').value)
+  const saldo=parseNum(document.getElementById('deuda-saldo-input').value)
   await db.from('deudas').update({saldo_extracto:saldo,updated_at:new Date().toISOString()}).eq('id',id)
   closeDeudaModal()
   if(saldo === 0) {
@@ -921,17 +922,28 @@ async function loadAnalisis(){
 }
 
 // ── GLOBAL66 + INVERSIONES ─────────────────────────────────
-let g66={usd_recibidos:192,claude_pro:20,elevenlabs:22,sp500:100,pesos_banco:null,trm:4300,historial:[]}
+let g66={usd_recibidos:192,claude_pro:20,elevenlabs:22,sp500:100,pesos_banco:null,trm:4300,historial:[],compromisos_usd:[]}
 async function loadGlobal66(){
   const [{data:d},{data:h}]=await Promise.all([db.from('global66').select('*').eq('user_id',currentUser.id).single(),db.from('global66_historial').select('*').eq('user_id',currentUser.id).order('fecha',{ascending:false})])
   if(d)Object.assign(g66,d)
-  g66.trm = trmActual // usar TRM automática
+  g66.trm = trmActual
   g66.historial=h||[]
+  // Cargar compromisos de localStorage, o migrar de DB
+  try{
+    const saved=localStorage.getItem('compromisos_usd')
+    if(saved) g66.compromisos_usd=JSON.parse(saved)
+  }catch(e){}
+  if(!g66.compromisos_usd || g66.compromisos_usd.length===0){
+    g66.compromisos_usd=[]
+    if(g66.claude_pro) g66.compromisos_usd.push({nombre:'Claude Pro',monto:Number(g66.claude_pro)})
+    if(g66.elevenlabs) g66.compromisos_usd.push({nombre:'ElevenLabs',monto:Number(g66.elevenlabs)})
+  }
   renderG66()
 }
+function g66TotalDesc(){ return g66.compromisos_usd.reduce((s,c)=>s+Number(c.monto||0),0) + Number(g66.sp500||0) }
 function renderG66(){
   const u=Number(g66.usd_recibidos)||0
-  const desc=(Number(g66.claude_pro)||0)+(Number(g66.elevenlabs)||0)+(Number(g66.sp500)||0)
+  const desc=g66TotalDesc()
   const aC=Math.max(u-desc,0)
   const p=Number(g66.pesos_banco)||0
   const tE=aC>0&&p>0?(p/aC).toFixed(0):'—'
@@ -954,9 +966,17 @@ function renderG66(){
       </div>
     </div>
     <div class="card" style="margin-bottom:10px">
-      <p style="font-size:11px;font-weight:700;color:var(--muted);margin-bottom:10px">DESCUENTOS USD</p>
-      ${[['Claude Pro','claude_pro'],['ElevenLabs','elevenlabs']].map(([l,k])=>'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><label style="font-size:13px">(-) '+l+'</label><input class="dist-input" style="width:100px" type="number" value="'+(g66[k]||0)+'" oninput="g66[\''+k+'\']=Number(this.value);renderG66();autoSaveG66()"/></div>').join('')}
-      <div style="display:flex;justify-content:space-between;padding-top:10px;border-top:1px solid var(--border)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <p style="font-size:11px;font-weight:700;color:var(--muted)">COMPROMISOS EN USD</p>
+        <button class="btn btn-sm" style="border:1px solid var(--border);background:var(--bg);color:var(--violet);font-size:11px" onclick="addCompromisoUSD()">+ Agregar</button>
+      </div>
+      ${g66.compromisos_usd.map((c,i)=>'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:6px"><label style="font-size:13px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">(-) '+c.nombre+'</label><input class="dist-input" style="width:80px" type="number" value="'+(c.monto||0)+'" oninput="g66.compromisos_usd['+i+'].monto=Number(this.value);renderG66();autoSaveG66()"/><button onclick="removeCompromisoUSD('+i+')" style="background:none;border:none;cursor:pointer;color:#CBD5E1;font-size:13px;padding:2px 4px;border-radius:4px" onmouseover="this.style.color=\'var(--red)\'" onmouseout="this.style.color=\'#CBD5E1\'">✕</button></div>').join('')}
+      ${g66.compromisos_usd.length===0?'<p style="font-size:12px;color:var(--muted);text-align:center;padding:8px 0">Sin compromisos — agrega uno</p>':''}
+      <div style="display:flex;justify-content:space-between;padding-top:10px;border-top:1px solid var(--border);margin-top:4px">
+        <p style="font-weight:600;font-size:12px;color:var(--muted)">Total compromisos</p>
+        <p style="font-weight:700;font-size:14px;color:var(--red)">${g66.compromisos_usd.reduce((s,c)=>s+Number(c.monto||0),0).toFixed(2)} USD</p>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding-top:8px">
         <p style="font-weight:700;font-size:13px">USD a convertir</p>
         <p style="font-weight:700;font-size:17px;color:var(--green)">${aC.toFixed(2)} USD</p>
       </div>
@@ -965,7 +985,7 @@ function renderG66(){
       <p style="font-size:11px;font-weight:700;color:var(--muted);margin-bottom:10px">CONVERSIÓN</p>
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
         <label style="font-size:13px">Pesos al banco</label>
-        <input class="dist-input" style="width:130px" type="number" value="${g66.pesos_banco||''}" placeholder="0" oninput="g66.pesos_banco=Number(this.value);renderG66();autoSaveG66()"/>
+        <input class="dist-input" style="width:130px" type="text" inputmode="numeric" value="${g66.pesos_banco?fmtNum(g66.pesos_banco):''}" placeholder="0" onfocus="this.value=this.value.replace(/\\./g,'')" onblur="if(this.value)this.value=new Intl.NumberFormat('es-CO').format(Number(this.value.replace(/\\./g,'')))" oninput="g66.pesos_banco=Number(this.value.replace(/[^0-9]/g,''));renderG66();autoSaveG66()"/>
       </div>
       <div class="grid-2" style="gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
         <div style="text-align:center"><p class="kpi-label">TRM efectiva</p><p style="font-weight:700;font-size:15px">${tE}</p></div>
@@ -1004,10 +1024,30 @@ function renderG66(){
     </div>
   `
 }
+function addCompromisoUSD(){
+  const nombre=prompt('Nombre del compromiso (ej: Netflix, Spotify, etc.)')
+  if(!nombre) return
+  const monto=Number(prompt('Monto en USD:',0))
+  if(isNaN(monto)) return
+  g66.compromisos_usd.push({nombre,monto})
+  renderG66()
+  autoSaveG66()
+}
+function removeCompromisoUSD(i){
+  if(!confirm('Eliminar "'+g66.compromisos_usd[i].nombre+'"?')) return
+  g66.compromisos_usd.splice(i,1)
+  renderG66()
+  autoSaveG66()
+}
 async function saveGlobal66(){
   const btn=document.querySelector('#page-global66 .btn-success')
   if(btn){btn.disabled=true;btn.textContent='Guardando...'}
-  const p={user_id:currentUser.id,usd_recibidos:g66.usd_recibidos,claude_pro:g66.claude_pro,elevenlabs:g66.elevenlabs,sp500:g66.sp500,pesos_banco:g66.pesos_banco,trm:g66.trm,updated_at:new Date().toISOString()}
+  // Guardar compromisos en localStorage (la tabla no tiene campo para array)
+  try{localStorage.setItem('compromisos_usd',JSON.stringify(g66.compromisos_usd))}catch(e){}
+  // Sync los primeros 2 al DB por compatibilidad
+  const cp=g66.compromisos_usd.find(c=>c.nombre.toLowerCase().includes('claude'))
+  const el=g66.compromisos_usd.find(c=>c.nombre.toLowerCase().includes('eleven'))
+  const p={user_id:currentUser.id,usd_recibidos:g66.usd_recibidos,claude_pro:cp?cp.monto:0,elevenlabs:el?el.monto:0,sp500:g66.sp500,pesos_banco:g66.pesos_banco,trm:g66.trm,updated_at:new Date().toISOString()}
   const {data:ex}=await db.from('global66').select('id').eq('user_id',currentUser.id).single()
   if(ex)await db.from('global66').update(p).eq('user_id',currentUser.id)
   else await db.from('global66').insert(p)
@@ -1025,9 +1065,9 @@ async function delG66(id){await db.from('global66_historial').delete().eq('id',i
 async function loadPrestamos(){const {data}=await db.from('prestamos').select('*').eq('user_id',currentUser.id).order('created_at',{ascending:false});const ps=data||[];const tA=ps.filter(p=>p.estado==='Activo').reduce((s,p)=>s+Number(p.monto),0);const pend=ps.filter(p=>p.estado==='Activo').reduce((s,p)=>s+(Number(p.monto)-Number(p.monto_pagado)),0);const rec=ps.filter(p=>p.estado==='Pagado').reduce((s,p)=>s+Number(p.monto_pagado),0);document.getElementById('prestamos-content').innerHTML='<div class="grid-3" style="margin-bottom:12px"><div class="card" style="text-align:center"><p class="kpi-label">Total prestado</p><p style="font-weight:700;font-size:14px;color:var(--red)">'+fmtC(tA)+'</p></div><div class="card" style="text-align:center"><p class="kpi-label">Pendiente</p><p style="font-weight:700;font-size:14px;color:var(--amber)">'+fmtC(pend)+'</p></div><div class="card" style="text-align:center"><p class="kpi-label">Recuperado</p><p style="font-weight:700;font-size:14px;color:var(--green)">'+fmtC(rec)+'</p></div></div>'+(ps.length===0?'<p class="empty">Sin préstamos</p>':ps.map(p=>{const pn=Number(p.monto)-Number(p.monto_pagado);const venc=p.fecha_compromiso&&new Date(p.fecha_compromiso)<new Date()&&p.estado==='Activo';return '<div style="background:var(--white);border:1px solid var(--border);border-radius:var(--radius);padding:14px;margin-bottom:8px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><div style="display:flex;align-items:center;gap:7px"><span class="badge '+(p.estado==='Activo'?'badge-red':'badge-green')+'">'+p.estado+'</span><p style="font-weight:700;font-size:14px">'+p.a_quien+'</p>'+(venc?'<span class="badge badge-red" style="font-size:10px">Vencido</span>':'')+'</div><p style="font-weight:700;font-size:15px;color:'+(p.estado==='Activo'?'var(--red)':'var(--muted)')+'">'+fmt(Number(p.monto))+'</p></div><div style="display:flex;gap:12px;flex-wrap:wrap;font-size:11px;color:var(--muted);margin-bottom:'+(p.estado==='Activo'?'10px':'0')+'"><span>'+new Date(p.fecha_prestamo+'T12:00').toLocaleDateString('es-CO',{day:'numeric',month:'short',year:'numeric'})+'</span>'+(p.fecha_compromiso?'<span>Compromiso: '+new Date(p.fecha_compromiso+'T12:00').toLocaleDateString('es-CO',{day:'numeric',month:'short'})+'</span>':'')+(p.notas?'<span>'+p.notas+'</span>':'')+'</div>'+(Number(p.monto_pagado)>0?'<div style="display:flex;gap:10px;font-size:11px;margin-bottom:8px"><span style="color:var(--green)">Pagado: '+fmt(Number(p.monto_pagado))+'</span><span style="color:var(--red)">Pendiente: '+fmt(pn)+'</span></div>':'')+(p.estado==='Activo'?'<div style="display:flex;gap:7px"><button class="btn btn-sm" style="flex:1;background:var(--green-l);color:var(--green);border:1px solid #6EE7B7" onclick="openPPagoM(\''+p.id+'\',\''+p.a_quien+'\','+p.monto_pagado+')">Registrar pago</button><button class="btn btn-sm" style="background:var(--bg);color:var(--muted);border:1px solid var(--border)" onclick="markPagado(\''+p.id+'\')">Marcar pagado</button></div>':'')+'</div>'}).join(''))}
 function openPrestModal(){document.getElementById('prest-fecha').value=hoy();document.getElementById('prest-modal').classList.add('open')}
 function closePrestModal(){document.getElementById('prest-modal').classList.remove('open')}
-async function savePrest(){const q=document.getElementById('prest-quien').value,m=Number(document.getElementById('prest-monto').value);if(!q||!m)return alert('Completa quién y monto');await db.from('prestamos').insert({user_id:currentUser.id,a_quien:q,monto:m,monto_pagado:0,estado:'Activo',fecha_prestamo:document.getElementById('prest-fecha').value,fecha_compromiso:document.getElementById('prest-compromiso').value||null,notas:document.getElementById('prest-notas').value||null});closePrestModal();loadPrestamos()}
+async function savePrest(){const q=document.getElementById('prest-quien').value,m=parseNum(document.getElementById('prest-monto').value);if(!q||!m)return alert('Completa quién y monto');await db.from('prestamos').insert({user_id:currentUser.id,a_quien:q,monto:m,monto_pagado:0,estado:'Activo',fecha_prestamo:document.getElementById('prest-fecha').value,fecha_compromiso:document.getElementById('prest-compromiso').value||null,notas:document.getElementById('prest-notas').value||null});closePrestModal();loadPrestamos()}
 function openPPagoM(id,n,act){document.getElementById('prest-pago-title').textContent='Pago — '+n;document.getElementById('prest-pago-id').value=id;document.getElementById('prest-pago-actual').value=act;document.getElementById('prest-pago-monto').value='';document.getElementById('prest-pago-modal').classList.add('open')}
-async function savePrestPago(){await db.from('prestamos').update({monto_pagado:Number(document.getElementById('prest-pago-actual').value)+Number(document.getElementById('prest-pago-monto').value)}).eq('id',document.getElementById('prest-pago-id').value);document.getElementById('prest-pago-modal').classList.remove('open');loadPrestamos()}
+async function savePrestPago(){await db.from('prestamos').update({monto_pagado:Number(document.getElementById('prest-pago-actual').value)+parseNum(document.getElementById('prest-pago-monto').value)}).eq('id',document.getElementById('prest-pago-id').value);document.getElementById('prest-pago-modal').classList.remove('open');loadPrestamos()}
 async function markPagado(id){if(!confirm('Marcar como pagado completamente?'))return;await db.from('prestamos').update({estado:'Pagado'}).eq('id',id);loadPrestamos()}
 
 // ── EXPORTAR EXCEL ─────────────────────────────────────────
@@ -1137,9 +1177,9 @@ async function loadCuentas() {
 }
 
 async function editarSaldoBase(cuenta, actual) {
-  const nuevo = prompt(`Saldo actual en ${cuenta} según tu app/extracto:`, actual)
+  const nuevo = prompt(`Saldo actual en ${cuenta} según tu app/extracto:`, actual?fmtNum(actual):0)
   if(nuevo === null) return
-  const saldo = Number(nuevo)
+  const saldo = parseNum(nuevo)
   if(isNaN(saldo)) return alert('Ingresa un número válido')
 
   const { data:ex } = await db.from('saldos_cuentas').select('id').eq('user_id',currentUser.id).eq('cuenta',cuenta).single()
