@@ -206,7 +206,7 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);min-h
   <div class="modal-header"><p class="modal-title">Nuevo movimiento</p><button class="modal-close" onclick="closeMovModal()">✕</button></div>
   <div class="form-grid-2">
     <div class="form-group"><label class="form-label">Fecha</label><input class="form-input" type="date" id="mov-fecha"/></div>
-    <div class="form-group"><label class="form-label">Monto</label><input class="form-input" type="number" id="mov-monto" placeholder="0"/></div>
+    <div class="form-group"><label class="form-label">Monto</label><input class="form-input" type="text" inputmode="numeric" id="mov-monto" placeholder="0" onfocus="this.value=this.value.replace(/\\./g,'')" onblur="if(this.value)this.value=new Intl.NumberFormat('es-CO').format(Number(this.value.replace(/\\./g,'')))" oninput="this.value=this.value.replace(/[^0-9]/g,'')"/></div>
   </div>
   <div class="form-group"><label class="form-label">Tipo</label>
     <select class="form-select" id="mov-tipo" onchange="onTipoChange()">
@@ -288,39 +288,6 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);min-h
 </div></div>
 <script>
 
-// Fix para iframe sandboxed (preview de Claude.ai / about:srcdoc)
-// El iframe intercepta fetch con postMessage que no puede clonar Headers.
-// Usamos XMLHttpRequest como fallback cuando fetch falla por ese motivo.
-const nativeFetch = window.fetch.bind(window)
-window.fetch = async function(url, opts = {}) {
-  try {
-    return await nativeFetch(url, opts)
-  } catch(e) {
-    if(e.message && e.message.includes('postMessage')) {
-      return new Promise((resolve, reject) => {
-        const xhr = new XMLHttpRequest()
-        xhr.open(opts.method || 'GET', url)
-        const headers = opts.headers || {}
-        if(headers instanceof Headers) {
-          headers.forEach((v, k) => xhr.setRequestHeader(k, v))
-        } else if(typeof headers === 'object') {
-          Object.entries(headers).forEach(([k, v]) => xhr.setRequestHeader(k, v))
-        }
-        xhr.onload = () => {
-          resolve(new Response(xhr.responseText, {
-            status: xhr.status,
-            statusText: xhr.statusText,
-            headers: {'content-type': xhr.getResponseHeader('content-type') || 'application/json'}
-          }))
-        }
-        xhr.onerror = () => reject(new Error('Network error'))
-        xhr.send(opts.body || null)
-      })
-    }
-    throw e
-  }
-}
-
 const SUPABASE_URL = 'https://ufcnnymwsnsighcyxfnx.supabase.co'
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVmY25ueW13c25zaWdoY3l4Zm54Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQyODk2NTUsImV4cCI6MjA4OTg2NTY1NX0.L3C89AUhTmUKZboPs2H4ILtU5OAwh4b4vQ7nwwi4t0M'
 const MY_USER_ID = 'cedf7f2a-23de-4319-89ff-5120f216c352'
@@ -334,66 +301,40 @@ const db = createClient(SUPABASE_URL, SUPABASE_KEY, {
 const currentUser = { id: MY_USER_ID }
 let chartInstances = {}
 let movFiltro = 'Todos'
-const MESES = ['MAR','ABR','MAY','JUN','JUL','AGO','SEP','OCT','NOV','DIC']
+const MESES = ['ENE','FEB','MAR','ABR','MAY','JUN','JUL','AGO','SEP','OCT','NOV','DIC']
 
-// ═══ REST DIRECTO — bypass total del SDK para evitar schema cache ═══
-const REST_HEADERS = {
-  'Content-Type':'application/json',
-  'apikey':SUPABASE_KEY,
-  'Authorization':'Bearer '+SUPABASE_KEY
-}
-
-async function restInsert(table, payload) {
-  const res = await fetch(SUPABASE_URL+'/rest/v1/'+table, {
-    method:'POST',
-    headers:{...REST_HEADERS, 'Prefer':'return=minimal'},
-    body: JSON.stringify(payload)
-  })
-  if(!res.ok) throw new Error(await res.text())
-  return true
-}
-
+// ═══ REST DIRECTO — bypass del SDK para tabla movimientos (schema cache bug) ═══
+const REST_HEADERS = {'Content-Type':'application/json','apikey':SUPABASE_KEY,'Authorization':'Bearer '+SUPABASE_KEY}
 async function restSelect(table, params='') {
-  const res = await fetch(SUPABASE_URL+'/rest/v1/'+table+'?'+params, {
-    headers:{...REST_HEADERS, 'Accept':'application/json'}
-  })
+  const res = await fetch(SUPABASE_URL+'/rest/v1/'+table+'?'+params, {headers:{...REST_HEADERS,'Accept':'application/json'}})
   if(!res.ok) throw new Error(await res.text())
   return await res.json()
 }
-
-async function restDelete(table, params='') {
-  const res = await fetch(SUPABASE_URL+'/rest/v1/'+table+'?'+params, {
-    method:'DELETE',
-    headers:{...REST_HEADERS, 'Prefer':'return=minimal'}
-  })
+async function restInsert(table, payload) {
+  const res = await fetch(SUPABASE_URL+'/rest/v1/'+table, {method:'POST',headers:{...REST_HEADERS,'Prefer':'return=minimal'},body:JSON.stringify(payload)})
   if(!res.ok) throw new Error(await res.text())
   return true
 }
-
-// Columnas de movimientos SIN semana — para evitar PGRST204
+async function restDelete(table, params='') {
+  const res = await fetch(SUPABASE_URL+'/rest/v1/'+table+'?'+params, {method:'DELETE',headers:{...REST_HEADERS,'Prefer':'return=minimal'}})
+  if(!res.ok) throw new Error(await res.text())
+  return true
+}
 const MOV_COLUMNS = 'id,user_id,fecha,tipo,categoria,monto,cuenta,a_cual_deuda,notas,created_at'
-
 async function getMovimientos(filters={}) {
   let params = 'select='+MOV_COLUMNS+'&user_id=eq.'+currentUser.id
   if(filters.desde) params += '&fecha=gte.'+filters.desde
   if(filters.tipo) params += '&tipo=eq.'+encodeURIComponent(filters.tipo)
-  if(filters.order) params += '&order='+filters.order
-  else params += '&order=fecha.desc'
-  const data = await restSelect('movimientos', params)
-  return enrichMovs(data)
+  params += '&order='+(filters.order||'fecha.desc')
+  return enrichMovs(await restSelect('movimientos', params))
 }
-
-async function insertMovimiento(payload) {
-  return restInsert('movimientos', payload)
-}
-
-async function deleteMovimiento(id) {
-  return restDelete('movimientos', 'id=eq.'+id)
-}
+async function insertMov(payload) { return restInsert('movimientos', payload) }
+async function deleteMov_rest(id) { return restDelete('movimientos', 'id=eq.'+id) }
 
 const fmt = n => new Intl.NumberFormat('es-CO',{style:'currency',currency:'COP',minimumFractionDigits:0}).format(n)
 const fmtPct = n => (n*100).toFixed(1)+'%'
 const fmtC = n => new Intl.NumberFormat('es-CO',{notation:'compact',maximumFractionDigits:1}).format(n)
+const fmtNum = n => new Intl.NumberFormat('es-CO').format(n)
 const hoy = () => new Date().toISOString().slice(0,10)
 const inicioMes = () => { const d=new Date();d.setDate(1);return d.toISOString().slice(0,10) }
 const inicioAnio = () => new Date().getFullYear()+'-01-01'
@@ -422,11 +363,19 @@ function goTo(page) {
 async function loadDashboard() {
   document.getElementById('dash-date').textContent =
     new Date().toLocaleDateString('es-CO',{weekday:'long',day:'numeric',month:'long'})
-  let [{data:deudas},movs,{data:prests}] = await Promise.all([
+  const [{data:deudas},movs,{data:prests},{data:saldosDB}] = await Promise.all([
     db.from('deudas').select('*').eq('user_id',currentUser.id).eq('activa',true).order('orden'),
     getMovimientos({desde:inicioMes()}),
-    db.from('prestamos').select('*').eq('user_id',currentUser.id).eq('estado','Activo')
+    db.from('prestamos').select('*').eq('user_id',currentUser.id).eq('estado','Activo'),
+    db.from('saldos_cuentas').select('*').eq('user_id',currentUser.id)
   ])
+  // Calcular saldo total de cuentas
+  const allMovs = await getMovimientos({})
+  const cDelta={};CUENTAS_CONFIG.forEach(c=>cDelta[c.nombre]=0)
+  ;(allMovs||[]).forEach(m=>{if(cDelta[m.cuenta]!==undefined){if(m.tipo==='Ingreso')cDelta[m.cuenta]+=Number(m.monto);else cDelta[m.cuenta]-=Number(m.monto)}})
+  const cBases={};(saldosDB||[]).forEach(s=>cBases[s.cuenta]=Number(s.saldo_base))
+  const totalCuentas=CUENTAS_CONFIG.filter(c=>c.nombre!=='Global66 USD').reduce((s,c)=>s+(cBases[c.nombre]||0)+(cDelta[c.nombre]||0),0)
+
   const pxd = n=>(movs||[]).filter(m=>m.tipo==='Pago deuda'&&m.a_cual_deuda===n).reduce((s,m)=>s+Number(m.monto),0)
   const deudaTotal=(deudas||[]).reduce((s,d)=>s+Math.max(Number(d.saldo_extracto)-pxd(d.nombre),0),0)
   const pct=deudaTotal>0?1-(deudaTotal/DEUDA_INICIAL):1
@@ -473,6 +422,10 @@ async function loadDashboard() {
       <div class="card" style="text-align:center"><p class="kpi-label">Ingresos</p><p style="font-weight:700;font-size:15px;color:var(--green)">${fmtC(ingresos)}</p></div>
       <div class="card" style="text-align:center"><p class="kpi-label">Gastos</p><p style="font-weight:700;font-size:15px">${fmtC(gastos)}</p></div>
       <div class="card" style="text-align:center"><p class="kpi-label">Pagos deuda</p><p style="font-weight:700;font-size:15px;color:var(--violet)">${fmtC(pagos)}</p></div>
+    </div>
+    <div class="card" style="margin-top:10px;display:flex;justify-content:space-between;align-items:center;border-left:4px solid var(--green)">
+      <div><p class="kpi-label">Total en cuentas</p><p style="font-size:11px;color:var(--muted)">Nequi + Bancolombia + Davivienda + G66</p></div>
+      <p style="font-weight:700;font-size:18px;color:${totalCuentas>=0?'var(--green)':'var(--red)'}">${fmt(totalCuentas)}</p>
     </div>
     <p class="section-label">Gastos hormiga — semana ${semA}</p>
     <div class="card">
@@ -550,7 +503,7 @@ async function loadDashboard() {
 // ── MOVIMIENTOS ────────────────────────────────────────────
 async function loadMovimientos() {
   document.getElementById('mov-mes').textContent=new Date().toLocaleDateString('es-CO',{month:'long',year:'numeric'})
-  let movs=await getMovimientos({desde:inicioMes()})
+  const movs=await getMovimientos({desde:inicioMes()})
   const total=t=>(movs||[]).filter(m=>m.tipo===t).reduce((s,m)=>s+Number(m.monto),0)
   const filtrados=movFiltro==='Todos'?(movs||[]):(movs||[]).filter(m=>m.tipo===movFiltro)
   const semA=getSemana(hoy())
@@ -591,7 +544,7 @@ async function loadMovimientos() {
   `
 }
 function setMovFiltro(f){movFiltro=f;loadMovimientos()}
-async function deleteMov(id){if(!confirm('Eliminar?'))return;await deleteMovimiento(id);loadMovimientos()}
+async function deleteMov(id){if(!confirm('Eliminar?'))return;await deleteMov_rest(id);loadMovimientos()}
 function openMovModal(){document.getElementById('mov-fecha').value=hoy();document.getElementById('mov-monto').value='';document.getElementById('mov-tipo').value='Gasto';document.getElementById('mov-cat').value='Otro';document.getElementById('mov-cuenta').value='Bancolombia';document.getElementById('mov-notas').value='';document.getElementById('mov-deuda-group').style.display='none';document.getElementById('mov-modal').classList.add('open')}
 function closeMovModal(){document.getElementById('mov-modal').classList.remove('open')}
 function onTipoChange(){document.getElementById('mov-deuda-group').style.display=document.getElementById('mov-tipo').value==='Pago deuda'?'block':'none'}
@@ -599,19 +552,16 @@ async function saveMov(){
   const btn=document.getElementById('mov-save-btn');btn.disabled=true;btn.textContent='Guardando...'
   const tipo=document.getElementById('mov-tipo').value
   const fecha=document.getElementById('mov-fecha').value
-  const monto=Number(document.getElementById('mov-monto').value)
+  const monto=Number(document.getElementById('mov-monto').value.replace(/\./g,''))
   const categoria=document.getElementById('mov-cat').value
   const cuenta=document.getElementById('mov-cuenta').value
   const deuda=tipo==='Pago deuda'?document.getElementById('mov-deuda').value:null
   const notas=document.getElementById('mov-notas').value||null
-
-  // Validaciones
   if(!fecha){btn.disabled=false;btn.textContent='Guardar movimiento';return alert('Selecciona una fecha')}
   if(!monto||monto<=0){btn.disabled=false;btn.textContent='Guardar movimiento';return alert('Ingresa un monto válido')}
   if(tipo==='Pago deuda'&&!deuda){btn.disabled=false;btn.textContent='Guardar movimiento';return alert('Selecciona a cuál deuda va el pago')}
-
   try{
-    await insertMovimiento({user_id:currentUser.id,fecha,tipo,categoria,monto,cuenta,a_cual_deuda:deuda,notas})
+    await insertMov({user_id:currentUser.id,fecha,tipo,categoria,monto,cuenta,a_cual_deuda:deuda,notas})
     closeMovModal();loadMovimientos()
   }catch(e){alert('Error al guardar: '+e.message)}
   btn.disabled=false;btn.textContent='Guardar movimiento'
@@ -787,7 +737,7 @@ async function loadDistribuidor(){
 
   renderDist()
 }
-function renderDist(){const tot=dSt.usarCuentas?dSt.totalCuentas:(Number(dSt.salario)+Number(dSt.extras)+Number(dSt.g66));let q=tot;const rows=dSt.items.map((it,i)=>{const v=Number(it.valor)||0;q-=v;const qi=q;return '<div class="dist-row"><p style="font-size:12px;'+(it.marcado?'text-decoration:line-through;color:var(--muted)':'')+'">'+it.concepto+'</p><input class="dist-input" type="number" value="'+(it.valor??'')+'" placeholder="—" oninput="dSt.items['+i+'].valor=this.value===\'\'?null:Number(this.value);renderDist()"/><div class="dist-check '+(it.marcado?'checked':'')+'" onclick="dSt.items['+i+'].marcado=!dSt.items['+i+'].marcado;renderDist()">'+(it.marcado?'✓':'')+'</div><p class="dist-queda" style="color:'+(qi<0?'var(--red)':'var(--muted)')+'">'+fmt(qi)+'</p></div>'}).join('');const sob=dSt.items.reduce((s,i)=>s-(Number(i.valor)||0),tot);document.getElementById('dist-content').innerHTML=`
+function renderDist(){const tot=dSt.usarCuentas?dSt.totalCuentas:(Number(dSt.salario)+Number(dSt.extras)+Number(dSt.g66));let q=tot;const rows=dSt.items.map((it,i)=>{const v=Number(it.valor)||0;q-=v;const qi=q;return '<div class="dist-row"><p style="font-size:12px;'+(it.marcado?'text-decoration:line-through;color:var(--muted)':'')+'">'+it.concepto+'</p><input class="dist-input" type="text" inputmode="numeric" value="'+(it.valor?fmtNum(it.valor):'')+'" placeholder="—" onfocus="this.value=this.value.replace(/\\./g,\'\')" onblur="this.value=this.value?new Intl.NumberFormat(\'es-CO\').format(Number(this.value.replace(/\\./g,\'\'))):\'—\'" oninput="let r=this.value.replace(/[^0-9]/g,\'\');dSt.items['+i+'].valor=r===\'\'?null:Number(r);renderDistTotals()"/><div class="dist-check '+(it.marcado?'checked':'')+'" onclick="dSt.items['+i+'].marcado=!dSt.items['+i+'].marcado;renderDist();autoSaveDist()">'+(it.marcado?'✓':'')+'</div><p class="dist-queda" style="font-size:11px;color:'+(qi<0?'var(--red)':'var(--muted)')+'">'+fmt(qi)+'</p></div>'}).join('');const sob=dSt.items.reduce((s,i)=>s-(Number(i.valor)||0),tot);document.getElementById('dist-content').innerHTML=`
     <div class="card" style="margin-bottom:12px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
         <p style="font-size:11px;font-weight:700;color:var(--muted)">FUENTE DE INGRESOS</p>
@@ -807,9 +757,9 @@ function renderDist(){const tot=dSt.usarCuentas?dSt.totalCuentas:(Number(dSt.sal
           <p style="font-weight:700;font-size:20px;color:var(--violet)">${fmt(dSt.totalCuentas)}</p>
         </div>
       `:`
-        ${[['Salario','salario'],['Extras','extras'],['Pesos Global66','g66']].map(([l,k])=>'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><label style="font-size:13px">'+l+'</label><input class="dist-input" style="width:130px" type="number" value="'+dSt[k]+'" oninput="dSt[\''+k+'\']=Number(this.value);renderDist()"/></div>').join('')}
+        ${[['Salario','salario'],['Extras','extras'],['Pesos Global66','g66']].map(([l,k])=>'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><label style="font-size:13px">'+l+'</label><input class="dist-input" style="width:140px" type="text" inputmode="numeric" value="'+(dSt[k]?fmtNum(dSt[k]):0)+'" onfocus="this.value=this.value.replace(/\\./g,\'\')" onblur="this.value=new Intl.NumberFormat(\'es-CO\').format(Number(this.value.replace(/\\./g,\'\')))" oninput="dSt[\''+k+'\']=Number(this.value.replace(/[^0-9]/g,\'\'));renderDistTotals()"/></div>').join('')}
       `}
-      <div style="display:flex;justify-content:space-between;padding-top:10px;border-top:1px solid var(--border);margin-top:10px">
+      <div id="dist-totals" style="display:flex;justify-content:space-between;padding-top:10px;border-top:1px solid var(--border);margin-top:10px">
         <p style="font-weight:700;font-size:13px">Total disponible</p>
         <p style="font-weight:700;font-size:17px;color:var(--green)">${fmt(tot)}</p>
       </div>
@@ -823,45 +773,122 @@ function renderDist(){const tot=dSt.usarCuentas?dSt.totalCuentas:(Number(dSt.sal
       </div>
       ${rows}
     </div>
-    <div style="background:${sob>=0?'var(--green-l)':'var(--red-l)'};border:1px solid ${sob>=0?'#6EE7B7':'#FCA5A5'};border-radius:var(--radius);padding:14px;display:flex;justify-content:space-between;align-items:center">
+    <div id="dist-sobrante" style="background:${sob>=0?'var(--green-l)':'var(--red-l)'};border:1px solid ${sob>=0?'#6EE7B7':'#FCA5A5'};border-radius:var(--radius);padding:14px;display:flex;justify-content:space-between;align-items:center">
       <p style="font-weight:700;font-size:13px;color:${sob>=0?'var(--green)':'var(--red)'}">
         ${sob>=0?'Sobrante → a deuda':'Faltante'}</p>
       <p style="font-weight:700;font-size:20px;color:${sob>=0?'var(--green)':'var(--red)'}">
         ${fmt(Math.abs(sob))}</p>
     </div>`}
-async function saveDist(){const btn=document.querySelector('#page-distribuidor .btn-success');btn.disabled=true;btn.textContent='Guardando...';const p={salario:dSt.salario,extras:Number(dSt.extras),global66_pesos:Number(dSt.g66),updated_at:new Date().toISOString()};const {data:ex}=await db.from('distribuidor').select('id').eq('user_id',currentUser.id).single();if(ex)await db.from('distribuidor').update(p).eq('user_id',currentUser.id);else await db.from('distribuidor').insert({...p,user_id:currentUser.id});await db.from('distribuidor_items').delete().eq('user_id',currentUser.id);await db.from('distribuidor_items').insert(dSt.items.map((it,i)=>({user_id:currentUser.id,concepto:it.concepto,valor:it.valor,marcado:it.marcado||false,orden:i})));btn.disabled=false;btn.textContent='Guardar';alert('Guardado!')}
+// Actualiza solo totales sin re-renderizar todo (para no perder foco del input)
+function renderDistTotals(){
+  const tot=dSt.usarCuentas?dSt.totalCuentas:(Number(dSt.salario)+Number(dSt.extras)+Number(dSt.g66))
+  const sob=dSt.items.reduce((s,i)=>s-(Number(i.valor)||0),tot)
+  const tEl=document.getElementById('dist-totals')
+  if(tEl)tEl.innerHTML='<p style="font-weight:700;font-size:13px">Total disponible</p><p style="font-weight:700;font-size:17px;color:var(--green)">'+fmt(tot)+'</p>'
+  const sEl=document.getElementById('dist-sobrante')
+  if(sEl){sEl.style.background=sob>=0?'var(--green-l)':'var(--red-l)';sEl.style.borderColor=sob>=0?'#6EE7B7':'#FCA5A5';sEl.innerHTML='<p style="font-weight:700;font-size:13px;color:'+(sob>=0?'var(--green)':'var(--red)')+'">'+(sob>=0?'Sobrante → a deuda':'Faltante')+'</p><p style="font-weight:700;font-size:20px;color:'+(sob>=0?'var(--green)':'var(--red)')+'">'+fmt(Math.abs(sob))+'</p>'}
+  // Actualizar "queda después" en cada fila
+  let q=tot;document.querySelectorAll('.dist-queda').forEach((el,i)=>{const v=Number(dSt.items[i]?.valor)||0;q-=v;el.textContent=fmt(q);el.style.color=q<0?'var(--red)':'var(--muted)'})
+  autoSaveDist()
+}
+async function saveDist(){
+  const btn=document.querySelector('#page-distribuidor .btn-success')
+  if(btn){btn.disabled=true;btn.textContent='Guardando...'}
+  const p={salario:dSt.salario,extras:Number(dSt.extras),global66_pesos:Number(dSt.g66),updated_at:new Date().toISOString()}
+  const {data:ex}=await db.from('distribuidor').select('id').eq('user_id',currentUser.id).single()
+  if(ex)await db.from('distribuidor').update(p).eq('user_id',currentUser.id)
+  else await db.from('distribuidor').insert({...p,user_id:currentUser.id})
+  await db.from('distribuidor_items').delete().eq('user_id',currentUser.id)
+  await db.from('distribuidor_items').insert(dSt.items.map((it,i)=>({user_id:currentUser.id,concepto:it.concepto,valor:it.valor,marcado:it.marcado||false,orden:i})))
+  if(btn){btn.disabled=false;btn.textContent='✓ Guardado';setTimeout(()=>{if(btn)btn.textContent='Guardar'},2000)}
+}
+// Auto-save con debounce (1.5s después del último cambio)
+let _distTimer=null
+function autoSaveDist(){
+  clearTimeout(_distTimer)
+  _distTimer=setTimeout(()=>saveDist(),1500)
+}
 
-// ── CONTROL MENSUAL ────────────────────────────────────────
+// ── CONTROL MENSUAL (AUTOMÁTICO) ──────────────────────────
 let gFijos=[{concepto:'Mercado',valor:0},{concepto:'Gasolina',valor:0},{concepto:'Luz',valor:280680},{concepto:'Agua',valor:0},{concepto:'Gas',valor:0},{concepto:'Salud y pensión',valor:508000},{concepto:'Mamá / familia',valor:0},{concepto:'Internet / celular',valor:48000},{concepto:'CapCut',valor:0},{concepto:'Lavada carro',valor:0},{concepto:'Peluquería',valor:0}]
 let compros=[{concepto:'Viaje Medellín',mes:'MAR',valor:2500000},{concepto:'Cumpleaños papá',mes:'MAR',valor:400000},{concepto:'Viaje España',mes:'JUL',valor:500000},{concepto:'Otro',mes:null,valor:0}]
 async function loadMensual(){
-  const [movs,{data:fij}]=await Promise.all([getMovimientos({desde:inicioAnio()}),db.from('gastos_fijos').select('*').eq('user_id',currentUser.id).order('orden')])
+  const [movs,{data:fij},{data:ditms},{data:dist}]=await Promise.all([
+    getMovimientos({desde:inicioAnio()}),
+    db.from('gastos_fijos').select('*').eq('user_id',currentUser.id).order('orden'),
+    db.from('distribuidor_items').select('*').eq('user_id',currentUser.id).order('orden'),
+    db.from('distribuidor').select('*').eq('user_id',currentUser.id).single()
+  ])
   if(fij&&fij.length>0)gFijos=fij
+
+  // Datos del distribuidor para el mes actual
+  const distSalario=Number(dist?.salario)||0
+  const distExtras=Number(dist?.extras)||0
+  const distG66=Number(dist?.global66_pesos)||0
+  const distTotal=distSalario+distExtras+distG66
+  const distItems=(ditms||[]).map(it=>({concepto:it.concepto,valor:Number(it.valor)||0,marcado:it.marcado}))
+  const distFijos=distItems.reduce((s,it)=>s+(it.valor||0),0)
+
   const gM=(t,m)=>(movs||[]).filter(x=>x.tipo===t&&getMes(x.fecha)===m).reduce((s,x)=>s+Number(x.monto),0)
   const tG=m=>(movs||[]).filter(x=>x.tipo==='Gasto'&&getMes(x.fecha)===m).reduce((s,x)=>s+Number(x.monto),0)
+  const mA=mesActual()
   const th=(t,hl)=>'<th style="text-align:right;padding:6px 4px;background:var(--bg);color:'+(hl?'var(--violet)':'var(--muted)')+';font-weight:600;font-size:11px">'+t+'</th>'
   const td=(v,c,b)=>'<td style="padding:5px;text-align:right;color:'+(c||'var(--text)')+';font-weight:'+(b?'700':'400')+';font-size:12px">'+(v>0?fmtC(v):'—')+'</td>'
-  const tdE=(v,c,m,id)=>'<td style="padding:3px;text-align:right"><input type="number" value="'+(v||'')+'" placeholder="—" style="width:60px;border:1px solid '+(m===mesActual()?'#BFDBFE':'var(--border)')+';border-radius:4px;padding:2px 4px;font-size:10px;text-align:right;background:'+(m===mesActual()?'var(--blue-l)':'var(--white)')+'" onchange="saveFijo(\''+c+'\',this.value,\''+m+'\',\''+(id||'')+'\')"/></td>'
-  document.getElementById('mensual-content').innerHTML='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px;min-width:650px"><thead><tr><th style="text-align:left;padding:7px 8px;background:var(--bg);color:var(--muted);font-weight:600;position:sticky;left:0;min-width:140px;font-size:11px">Concepto</th>'+MESES.map(m=>th(m,m===mesActual())).join('')+'</tr></thead><tbody>'+
-    secR('INGRESOS')+
-    '<tr><td style="padding:5px 8px;position:sticky;left:0;background:var(--white);font-size:12px">Ingresos totales</td>'+MESES.map(m=>td(gM('Ingreso',m),'var(--green)',true)).join('')+'</tr>'+
-    secR('GASTOS VARIABLES')+
-    '<tr><td style="padding:5px 8px;position:sticky;left:0;background:var(--white);font-size:12px">Total gastos</td>'+MESES.map(m=>td(tG(m),'var(--text)',true)).join('')+'</tr>'+
-    secR('GASTOS FIJOS')+
-    gFijos.map(f=>'<tr><td style="padding:5px 8px;position:sticky;left:0;background:var(--white);font-size:12px;color:var(--muted)">'+f.concepto+'</td>'+MESES.map(m=>tdE(f.valor,f.concepto,m,f.id)).join('')+'</tr>').join('')+
-    '<tr style="border-top:1px solid var(--border)"><td style="padding:6px 8px;position:sticky;left:0;background:var(--white);font-weight:600;font-size:12px">Total fijos</td>'+MESES.map(()=>'<td style="padding:5px;text-align:right;font-weight:600;font-size:12px;color:var(--amber)">'+fmtC(gFijos.reduce((s,f)=>s+(Number(f.valor)||0),0))+'</td>').join('')+'</tr>'+
-    secR('DEUDA Y AHORRO')+
-    '<tr><td style="padding:5px 8px;position:sticky;left:0;background:var(--white);font-size:12px">Pagos a deuda</td>'+MESES.map(m=>td(gM('Pago deuda',m),'var(--violet)',true)).join('')+'</tr>'+
-    '<tr><td style="padding:5px 8px;position:sticky;left:0;background:var(--white);font-size:12px">Ahorros</td>'+MESES.map(m=>td(gM('Ahorro',m),'var(--blue)',true)).join('')+'</tr>'+
-    secR('COMPROMISOS')+
-    compros.map((c,idx)=>'<tr><td style="padding:5px 8px;position:sticky;left:0;background:var(--white);font-size:12px">'+c.concepto+'</td>'+MESES.map(m=>'<td style="padding:3px;text-align:right"><input type="number" value="'+(c.mes===m?c.valor||'':'')+'" placeholder="—" style="width:60px;border:1px solid '+(m===mesActual()?'#BFDBFE':'var(--border)')+';border-radius:4px;padding:2px 4px;font-size:10px;text-align:right;background:'+(m===mesActual()?'var(--blue-l)':'var(--white)')+'" onchange="saveComp('+idx+',this.value,\''+m+'\')"/></td>').join('')+'</tr>').join('')+
-    secR('BALANCE')+
-    '<tr style="border-top:2px solid var(--border)"><td style="padding:7px 8px;position:sticky;left:0;background:var(--white);font-weight:700;font-size:12px">Sobrante/Faltante</td>'+MESES.map(m=>{const b=gM('Ingreso',m)-tG(m)-gFijos.reduce((s,f)=>s+(Number(f.valor)||0),0)-gM('Pago deuda',m)-gM('Ahorro',m)-compros.reduce((s,c)=>s+(c.mes===m?Number(c.valor)||0:0),0);return '<td style="padding:5px;text-align:right;font-weight:700;font-size:12px;color:'+(b>=0?'var(--green)':'var(--red)')+'">'+(gM('Ingreso',m)||tG(m)?fmtC(Math.abs(b))+(b<0?' ↓':' ↑'):'—')+'</td>'}).join('')+'</tr>'+
-    '</tbody></table></div>'
+
+  // Gastos fijos: para el mes actual usa lo del distribuidor; para otros meses usa lo guardado
+  const getFijo=(concepto,m)=>{
+    if(m===mA){
+      const di=distItems.find(it=>it.concepto.toLowerCase().includes(concepto.toLowerCase()))
+      if(di) return di.valor
+    }
+    return gFijos.find(f=>f.concepto===concepto)?.valor||0
+  }
+  const totalFijos=m=>{
+    if(m===mA) return distFijos
+    return gFijos.reduce((s,f)=>s+(Number(f.valor)||0),0)
+  }
+
+  // Ingresos: mes actual usa distribuidor si hay, sino movimientos
+  const getIngreso=m=>{
+    const movIng=gM('Ingreso',m)
+    if(m===mA && distTotal>0 && movIng===0) return distTotal
+    return movIng
+  }
+
+  document.getElementById('mensual-content').innerHTML=`
+    <div class="card" style="margin-bottom:10px;padding:10px 14px;display:flex;align-items:center;gap:8px;background:var(--violet-l);border-color:#C4B5FD">
+      <span style="font-size:14px">⚡</span>
+      <p style="font-size:11px;color:var(--violet);font-weight:600">Se llena automáticamente con tus movimientos y el distribuidor del mes actual</p>
+    </div>
+    <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px;min-width:650px">
+    <thead><tr><th style="text-align:left;padding:7px 8px;background:var(--bg);color:var(--muted);font-weight:600;position:sticky;left:0;min-width:140px;font-size:11px">Concepto</th>${MESES.map(m=>th(m,m===mA)).join('')}</tr></thead>
+    <tbody>
+    ${secR('INGRESOS')}
+    <tr><td style="padding:5px 8px;position:sticky;left:0;background:var(--white);font-size:12px">Salario + extras</td>${MESES.map(m=>td(getIngreso(m),'var(--green)',true)).join('')}</tr>
+    ${secR('GASTOS VARIABLES (movimientos)')}
+    <tr><td style="padding:5px 8px;position:sticky;left:0;background:var(--white);font-size:12px">Total gastos</td>${MESES.map(m=>td(tG(m),'var(--text)',true)).join('')}</tr>
+    ${secR('DISTRIBUIDOR / GASTOS FIJOS')}
+    ${distItems.length>0?distItems.map(it=>'<tr><td style="padding:5px 8px;position:sticky;left:0;background:var(--white);font-size:12px;color:var(--muted)">'+(it.marcado?'✓ ':'')+it.concepto+'</td>'+MESES.map(m=>'<td style="padding:5px;text-align:right;font-size:12px;color:'+(m===mA?(it.valor>0?'var(--blue)':'var(--muted)'):'var(--muted)')+'">'+(m===mA&&it.valor>0?fmtC(it.valor):'—')+'</td>').join('')+'</tr>').join('')
+    :gFijos.map(f=>'<tr><td style="padding:5px 8px;position:sticky;left:0;background:var(--white);font-size:12px;color:var(--muted)">'+f.concepto+'</td>'+MESES.map(m=>td(Number(f.valor)||0,'var(--muted)',false)).join('')+'</tr>').join('')}
+    <tr style="border-top:1px solid var(--border)"><td style="padding:6px 8px;position:sticky;left:0;background:var(--white);font-weight:600;font-size:12px">Total distribuidor</td>${MESES.map(m=>'<td style="padding:5px;text-align:right;font-weight:600;font-size:12px;color:var(--amber)">'+(m===mA?fmtC(distFijos):'—')+'</td>').join('')}</tr>
+    ${secR('DEUDA Y AHORRO')}
+    <tr><td style="padding:5px 8px;position:sticky;left:0;background:var(--white);font-size:12px">Pagos a deuda</td>${MESES.map(m=>td(gM('Pago deuda',m),'var(--violet)',true)).join('')}</tr>
+    <tr><td style="padding:5px 8px;position:sticky;left:0;background:var(--white);font-size:12px">Ahorros</td>${MESES.map(m=>td(gM('Ahorro',m),'var(--blue)',true)).join('')}</tr>
+    ${secR('BALANCE')}
+    <tr style="border-top:2px solid var(--border)"><td style="padding:7px 8px;position:sticky;left:0;background:var(--white);font-weight:700;font-size:12px">Sobrante / Faltante</td>${MESES.map(m=>{
+      const ing=getIngreso(m)
+      const g=tG(m)
+      const tf=totalFijos(m)
+      const pd=gM('Pago deuda',m)
+      const ah=gM('Ahorro',m)
+      const b=ing-g-tf-pd-ah
+      const tiene=ing>0||g>0||pd>0
+      return '<td style="padding:5px;text-align:right;font-weight:700;font-size:12px;color:'+(b>=0?'var(--green)':'var(--red)')+'">'+(tiene?fmtC(Math.abs(b))+(b<0?' ↓':' ↑'):'—')+'</td>'
+    }).join('')}</tr>
+    </tbody></table></div>
+  `
 }
 function secR(t){return '<tr><td colspan="'+(MESES.length+1)+'" style="padding:8px 8px 3px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;background:var(--bg)">'+t+'</td></tr>'}
-async function saveFijo(c,v,m,id){const idx=gFijos.findIndex(f=>f.concepto===c);if(idx>=0)gFijos[idx].valor=Number(v)||0;if(id)await db.from('gastos_fijos').update({valor:Number(v)||0}).eq('id',id)}
-async function saveComp(idx,v,m){compros[idx]={...compros[idx],valor:Number(v)||0,mes:m};if(compros[idx].id)await db.from('compromisos').update({valor:Number(v)||0,mes:m}).eq('id',compros[idx].id)}
 
 // ── ANÁLISIS ───────────────────────────────────────────────
 async function loadAnalisis(){
@@ -893,11 +920,104 @@ async function loadAnalisis(){
   },50)
 }
 
-// ── GLOBAL66 ───────────────────────────────────────────────
+// ── GLOBAL66 + INVERSIONES ─────────────────────────────────
 let g66={usd_recibidos:192,claude_pro:20,elevenlabs:22,sp500:100,pesos_banco:null,trm:4300,historial:[]}
-async function loadGlobal66(){const [{data:d},{data:h}]=await Promise.all([db.from('global66').select('*').eq('user_id',currentUser.id).single(),db.from('global66_historial').select('*').eq('user_id',currentUser.id).order('fecha',{ascending:false})]);if(d)Object.assign(g66,d);g66.historial=h||[];renderG66()}
-function renderG66(){const u=Number(g66.usd_recibidos)||0,desc=(Number(g66.claude_pro)||0)+(Number(g66.elevenlabs)||0)+(Number(g66.sp500)||0),aC=Math.max(u-desc,0),p=Number(g66.pesos_banco)||0,tE=aC>0&&p>0?(p/aC).toFixed(0):'—',com=aC>0&&p>0?Math.round(u*Number(g66.trm)-p-desc*Number(g66.trm)):'—';document.getElementById('global66-content').innerHTML='<div class="card" style="margin-bottom:10px"><p style="font-size:11px;font-weight:700;color:var(--muted);margin-bottom:10px">ENTRADA USD</p><div style="display:flex;justify-content:space-between;align-items:center"><label style="font-size:13px">USD recibidos</label><input class="dist-input" style="width:120px" type="number" value="'+(g66.usd_recibidos||'')+'" oninput="g66.usd_recibidos=Number(this.value);renderG66()"/></div></div><div class="card" style="margin-bottom:10px"><p style="font-size:11px;font-weight:700;color:var(--muted);margin-bottom:10px">DESCUENTOS USD</p>'+[['Claude Pro','claude_pro'],['ElevenLabs','elevenlabs'],['S&P 500','sp500']].map(([l,k])=>'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><label style="font-size:13px">(-) '+l+'</label><input class="dist-input" style="width:100px" type="number" value="'+(g66[k]||0)+'" oninput="g66[\''+k+'\']=Number(this.value);renderG66()"/></div>').join('')+'<div style="display:flex;justify-content:space-between;padding-top:10px;border-top:1px solid var(--border)"><p style="font-weight:700;font-size:13px">USD a convertir</p><p style="font-weight:700;font-size:17px;color:var(--green)">'+aC.toFixed(2)+' USD</p></div></div><div class="card" style="margin-bottom:10px"><p style="font-size:11px;font-weight:700;color:var(--muted);margin-bottom:10px">CONVERSIÓN</p>'+[['Pesos al banco','pesos_banco'],['TRM del día','trm']].map(([l,k])=>'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><label style="font-size:13px">'+l+'</label><input class="dist-input" style="width:130px" type="number" value="'+(g66[k]||'')+'" placeholder="0" oninput="g66[\''+k+'\']=Number(this.value);renderG66()"/></div>').join('')+'<div class="grid-2" style="gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)"><div style="text-align:center"><p class="kpi-label">TRM efectiva</p><p style="font-weight:700;font-size:15px">'+tE+'</p></div><div style="text-align:center"><p class="kpi-label">Comisión est.</p><p style="font-weight:700;font-size:15px;color:var(--red)">'+(typeof com==='number'?fmt(com):com)+'</p></div></div></div><p class="section-label">Historial</p><div class="card">'+( g66.historial.length===0?'<p class="empty" style="padding:16px">Sin conversiones</p>':g66.historial.map(h=>'<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border);font-size:12px"><span>'+new Date(h.fecha+'T12:00').toLocaleDateString('es-CO',{day:'numeric',month:'short'})+'</span><span style="font-weight:600">'+h.usd_recibidos+' USD</span><span style="font-weight:600">'+fmt(h.cop_banco)+'</span><button onclick="delG66(\''+h.id+'\')" style="background:none;border:none;cursor:pointer;color:#CBD5E1;font-size:11px">✕</button></div>').join(''))+'<button class="btn btn-primary btn-sm" style="margin-top:10px;width:100%" onclick="addG66Hist()">+ Registrar conversión</button></div>'}
-async function saveGlobal66(){const p={user_id:currentUser.id,usd_recibidos:g66.usd_recibidos,claude_pro:g66.claude_pro,elevenlabs:g66.elevenlabs,sp500:g66.sp500,pesos_banco:g66.pesos_banco,trm:g66.trm,updated_at:new Date().toISOString()};const {data:ex}=await db.from('global66').select('id').eq('user_id',currentUser.id).single();if(ex)await db.from('global66').update(p).eq('user_id',currentUser.id);else await db.from('global66').insert(p);alert('Guardado!')}
+async function loadGlobal66(){
+  const [{data:d},{data:h}]=await Promise.all([db.from('global66').select('*').eq('user_id',currentUser.id).single(),db.from('global66_historial').select('*').eq('user_id',currentUser.id).order('fecha',{ascending:false})])
+  if(d)Object.assign(g66,d)
+  g66.trm = trmActual // usar TRM automática
+  g66.historial=h||[]
+  renderG66()
+}
+function renderG66(){
+  const u=Number(g66.usd_recibidos)||0
+  const desc=(Number(g66.claude_pro)||0)+(Number(g66.elevenlabs)||0)+(Number(g66.sp500)||0)
+  const aC=Math.max(u-desc,0)
+  const p=Number(g66.pesos_banco)||0
+  const tE=aC>0&&p>0?(p/aC).toFixed(0):'—'
+  const com=aC>0&&p>0?Math.round(u*trmActual-p-desc*trmActual):'—'
+  const sp500usd=Number(g66.sp500)||0
+  const sp500cop=Math.round(sp500usd*trmActual)
+
+  document.getElementById('global66-content').innerHTML=`
+    <div class="card" style="margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <p style="font-size:11px;font-weight:700;color:var(--muted)">TRM HOY</p>
+        <p style="font-weight:700;font-size:15px;color:var(--blue)">$${fmtNum(trmActual)} COP/USD</p>
+      </div>
+    </div>
+    <div class="card" style="margin-bottom:10px">
+      <p style="font-size:11px;font-weight:700;color:var(--muted);margin-bottom:10px">ENTRADA USD</p>
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <label style="font-size:13px">USD recibidos</label>
+        <input class="dist-input" style="width:120px" type="number" value="${g66.usd_recibidos||''}" oninput="g66.usd_recibidos=Number(this.value);renderG66();autoSaveG66()"/>
+      </div>
+    </div>
+    <div class="card" style="margin-bottom:10px">
+      <p style="font-size:11px;font-weight:700;color:var(--muted);margin-bottom:10px">DESCUENTOS USD</p>
+      ${[['Claude Pro','claude_pro'],['ElevenLabs','elevenlabs']].map(([l,k])=>'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><label style="font-size:13px">(-) '+l+'</label><input class="dist-input" style="width:100px" type="number" value="'+(g66[k]||0)+'" oninput="g66[\''+k+'\']=Number(this.value);renderG66();autoSaveG66()"/></div>').join('')}
+      <div style="display:flex;justify-content:space-between;padding-top:10px;border-top:1px solid var(--border)">
+        <p style="font-weight:700;font-size:13px">USD a convertir</p>
+        <p style="font-weight:700;font-size:17px;color:var(--green)">${aC.toFixed(2)} USD</p>
+      </div>
+    </div>
+    <div class="card" style="margin-bottom:10px">
+      <p style="font-size:11px;font-weight:700;color:var(--muted);margin-bottom:10px">CONVERSIÓN</p>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <label style="font-size:13px">Pesos al banco</label>
+        <input class="dist-input" style="width:130px" type="number" value="${g66.pesos_banco||''}" placeholder="0" oninput="g66.pesos_banco=Number(this.value);renderG66();autoSaveG66()"/>
+      </div>
+      <div class="grid-2" style="gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
+        <div style="text-align:center"><p class="kpi-label">TRM efectiva</p><p style="font-weight:700;font-size:15px">${tE}</p></div>
+        <div style="text-align:center"><p class="kpi-label">Comisión est.</p><p style="font-weight:700;font-size:15px;color:var(--red)">${typeof com==='number'?fmt(com):com}</p></div>
+      </div>
+    </div>
+
+    <p class="section-label">Inversiones en USD</p>
+    <div class="card" style="margin-bottom:10px;border-left:4px solid var(--blue)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:18px">📈</span>
+          <div>
+            <p style="font-weight:700;font-size:14px">XTB — S&P 500</p>
+            <p style="font-size:11px;color:var(--muted)">Ahorro en dólares</p>
+          </div>
+        </div>
+        <input class="dist-input" style="width:100px" type="number" value="${sp500usd}" placeholder="0" oninput="g66.sp500=Number(this.value);renderG66();autoSaveG66()"/>
+      </div>
+      <div class="grid-2" style="gap:8px">
+        <div style="background:var(--blue-l);border-radius:8px;padding:10px;text-align:center">
+          <p class="kpi-label" style="color:var(--blue)">En USD</p>
+          <p style="font-weight:700;font-size:16px;color:var(--blue)">$${sp500usd}</p>
+        </div>
+        <div style="background:var(--green-l);border-radius:8px;padding:10px;text-align:center">
+          <p class="kpi-label" style="color:var(--green)">En COP (TRM ${fmtNum(trmActual)})</p>
+          <p style="font-weight:700;font-size:16px;color:var(--green)">${fmt(sp500cop)}</p>
+        </div>
+      </div>
+    </div>
+
+    <p class="section-label">Historial de conversiones</p>
+    <div class="card">
+      ${g66.historial.length===0?'<p class="empty" style="padding:16px">Sin conversiones</p>':g66.historial.map(h=>'<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border);font-size:12px"><span>'+new Date(h.fecha+'T12:00').toLocaleDateString('es-CO',{day:'numeric',month:'short'})+'</span><span style="font-weight:600">'+h.usd_recibidos+' USD</span><span style="font-weight:600">'+fmt(h.cop_banco)+'</span><button onclick="delG66(\''+h.id+'\')" style="background:none;border:none;cursor:pointer;color:#CBD5E1;font-size:11px">✕</button></div>').join('')}
+      <button class="btn btn-primary btn-sm" style="margin-top:10px;width:100%" onclick="addG66Hist()">+ Registrar conversión</button>
+    </div>
+  `
+}
+async function saveGlobal66(){
+  const btn=document.querySelector('#page-global66 .btn-success')
+  if(btn){btn.disabled=true;btn.textContent='Guardando...'}
+  const p={user_id:currentUser.id,usd_recibidos:g66.usd_recibidos,claude_pro:g66.claude_pro,elevenlabs:g66.elevenlabs,sp500:g66.sp500,pesos_banco:g66.pesos_banco,trm:g66.trm,updated_at:new Date().toISOString()}
+  const {data:ex}=await db.from('global66').select('id').eq('user_id',currentUser.id).single()
+  if(ex)await db.from('global66').update(p).eq('user_id',currentUser.id)
+  else await db.from('global66').insert(p)
+  if(btn){btn.disabled=false;btn.textContent='✓ Guardado';setTimeout(()=>{if(btn)btn.textContent='Guardar'},2000)}
+}
+let _g66Timer=null
+function autoSaveG66(){
+  clearTimeout(_g66Timer)
+  _g66Timer=setTimeout(()=>saveGlobal66(),1500)
+}
 async function addG66Hist(){await db.from('global66_historial').insert({user_id:currentUser.id,fecha:hoy(),usd_recibidos:g66.usd_recibidos,cop_banco:g66.pesos_banco||0});loadGlobal66()}
 async function delG66(id){await db.from('global66_historial').delete().eq('id',id);loadGlobal66()}
 
@@ -925,7 +1045,7 @@ async function exportExcel(){
   ])
   const wb=XLSX.utils.book_new()
   // Movimientos
-  const r1=[['Fecha','Tipo','Categoría','Monto','Cuenta','A cuál deuda','Semana','Notas']];(movs||[]).forEach(m=>r1.push([m.fecha,m.tipo,m.categoria,Number(m.monto),m.cuenta,m.a_cual_deuda||'',m.semana||getSemana(m.fecha)||'',m.notas||'']));const ws1=XLSX.utils.aoa_to_sheet(r1);ws1['!cols']=[{wch:12},{wch:14},{wch:16},{wch:14},{wch:14},{wch:18},{wch:8},{wch:24}];XLSX.utils.book_append_sheet(wb,ws1,'Movimientos')
+  const r1=[['Fecha','Tipo','Categoría','Monto','Cuenta','A cuál deuda','Semana','Notas']];(movs||[]).forEach(m=>r1.push([m.fecha,m.tipo,m.categoria,Number(m.monto),m.cuenta,m.a_cual_deuda||'',m.semana||'',m.notas||'']));const ws1=XLSX.utils.aoa_to_sheet(r1);ws1['!cols']=[{wch:12},{wch:14},{wch:16},{wch:14},{wch:14},{wch:18},{wch:8},{wch:24}];XLSX.utils.book_append_sheet(wb,ws1,'Movimientos')
   // Deuda
   const r2=[['Nombre','Tipo','Saldo Extracto','Tasa EA','Interés/mes','Cuota','Cuotas pag.','Cuotas rest.']];(deudas||[]).forEach(d=>r2.push([d.nombre,d.tipo,Number(d.saldo_extracto),d.tasa_ea,Math.round(Number(d.saldo_extracto)*(Math.pow(1+d.tasa_ea,1/12)-1)),d.cuota_mensual||'',d.cuotas_pagadas||'',d.cuotas_total?(d.cuotas_total-(d.cuotas_pagadas||0)):'']));r2.push([]);r2.push(['TRACKER MENSUAL']);r2.push(['Deuda',...MESES]);const tM={};(tracker||[]).forEach(t=>tM[t.deuda_id+'_'+t.mes]=t.saldo);(deudas||[]).forEach(d=>r2.push([d.nombre,...MESES.map(m=>tM[d.id+'_'+m]||'')]));const ws2=XLSX.utils.aoa_to_sheet(r2);ws2['!cols']=[{wch:24},{wch:10},{wch:16},{wch:10},{wch:14},{wch:12},{wch:12},{wch:12}];XLSX.utils.book_append_sheet(wb,ws2,'Deuda')
   // Distribuidor
@@ -1157,10 +1277,27 @@ document.addEventListener('click',function(e){
   }
 })
 
+// ── TRM AUTOMÁTICA ────────────────────────────────────────
+let trmActual = 4300 // fallback
+async function fetchTRM() {
+  try {
+    const res = await fetch('https://www.datos.gov.co/resource/32sa-8pi3.json?$order=vigenciadesde%20DESC&$limit=1')
+    const data = await res.json()
+    if(data && data[0] && data[0].valor) {
+      trmActual = Math.round(Number(data[0].valor))
+      console.log('TRM actualizada:', trmActual)
+    }
+  } catch(e) {
+    console.warn('No se pudo obtener TRM, usando fallback:', trmActual)
+  }
+}
+
 // ── INIT ───────────────────────────────────────────────────
 document.getElementById('app').style.display='flex'
-loadDashboard()
-updateDeudaDropdown()
+fetchTRM().then(() => {
+  loadDashboard()
+  updateDeudaDropdown()
+})
 
 </script>
 </body>
